@@ -11,7 +11,12 @@
     "build": "bun build --target=bun src/index.ts --outdir=dist",
     "start": "bun dist/index.js",
     "dev": "bun run src/index.ts",
-    "test": "bun run tests/chatbot.test.ts"
+    "test": "bun run tests/chatbot.test.ts",
+    "chat": "bun run src/index.ts chat",
+    "o": "bun run src/index.ts chat -m openai",
+    "oa": "bun run src/index.ts chat -m openai -a",
+    "os": "bun run src/index.ts chat -m openai -s",
+    "ot": "bun run src/index.ts chat -m openai -t"
   },
   "keywords": ["cli", "chatbot", "openai", "typescript", "bun"],
   "license": "MIT",

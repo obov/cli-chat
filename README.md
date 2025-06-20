@@ -36,7 +36,17 @@ bun run dev chat --mode echo
 
 ### OpenAI Mode
 ```bash
+# Basic OpenAI mode
 bun run dev chat --mode openai
+
+# OpenAI with tools (weather, time, calculations)
+bun run dev chat --mode openai --tools
+
+# OpenAI with streaming and server storage
+bun run dev chat --mode openai --stream --store
+
+# All features combined
+bun run dev chat --mode openai --tools --stream --store
 ```
 
 ### Agent Mode

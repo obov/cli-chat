@@ -17,10 +17,19 @@ program
   .command('chat')
   .description('Start interactive chat session')
   .option('-m, --mode <mode>', 'Chat mode: echo, openai, or agent', 'echo')
-  .option('-t, --tools', 'Enable tools in agent mode', false)
-  .option('-s, --stream', 'Enable streaming responses in agent mode', false)
+  .option('-t, --tools', 'Enable tools (works with openai and agent modes)', false)
+  .option('-s, --stream', 'Enable streaming responses', false)
+  .option('--store', 'Enable server-side storage (Responses API)', false)
+  .option('-a, --all', 'Enable all features (tools, stream, store)', false)
   .action(async (options) => {
     const mode = options.mode as 'echo' | 'openai' | 'agent';
+    
+    // Handle --all flag
+    if (options.all) {
+      options.tools = true;
+      options.stream = true;
+      options.store = true;
+    }
     
     // Validate config if using OpenAI or Agent mode
     if ((mode === 'openai' || mode === 'agent') && !validateConfig()) {
@@ -42,9 +51,19 @@ program
       }
       console.log('Type "exit" to quit, "clear" to reset conversation.\n');
     } else if (mode === 'openai') {
-      bot = new ChatBot('openai');
+      bot = new ChatBot('openai', options.store, options.tools);
       modeEmoji = '🤖';
-      console.log(`${modeEmoji} OPENAI Mode Started! Type "exit" to quit.\n`);
+      console.log(`${modeEmoji} OPENAI Mode Started!`);
+      if (options.tools) {
+        console.log(`🔧 Available tools: ${bot.getAvailableTools().join(', ')}`);
+      }
+      if (options.store) {
+        console.log('💾 Server-side storage enabled (Responses API)');
+      }
+      if (options.stream) {
+        console.log('📡 Streaming mode enabled');
+      }
+      console.log('Type "exit" to quit.\n');
     } else {
       bot = new ChatBot('echo');
       modeEmoji = '🔄';
@@ -80,7 +99,7 @@ program
         }
         
         // Get response
-        if (mode === 'agent' && options.stream && bot instanceof Agent) {
+        if (options.stream && (bot instanceof Agent || bot instanceof ChatBot)) {
           process.stdout.write('Bot: ');
           for await (const chunk of bot.getStreamingResponse(userInput)) {
             process.stdout.write(chunk);
