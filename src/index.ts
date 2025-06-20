@@ -2,6 +2,8 @@
 
 import { Command } from 'commander';
 import { createInterface } from 'readline';
+import { ChatBot } from './chatbot';
+import { validateConfig } from './config';
 
 const program = new Command();
 
@@ -13,8 +15,19 @@ program
 program
   .command('chat')
   .description('Start interactive chat session')
-  .action(async () => {
-    console.log('🤖 Echo Bot Started! Type "exit" to quit.\n');
+  .option('-m, --mode <mode>', 'Chat mode: echo or openai', 'echo')
+  .action(async (options) => {
+    const mode = options.mode as 'echo' | 'openai';
+    
+    // Validate config if using OpenAI mode
+    if (mode === 'openai' && !validateConfig()) {
+      process.exit(1);
+    }
+    
+    const chatbot = new ChatBot(mode);
+    const modeEmoji = mode === 'echo' ? '🔄' : '🤖';
+    
+    console.log(`${modeEmoji} ${mode.toUpperCase()} Mode Started! Type "exit" to quit.\n`);
     
     const rl = createInterface({
       input: process.stdin,
@@ -38,8 +51,15 @@ program
           break;
         }
         
-        // Echo bot functionality
-        console.log(`Bot: ${userInput}\n`);
+        if (userInput.toLowerCase().trim() === 'clear') {
+          chatbot.clearHistory();
+          console.log('🗑️  Chat history cleared!\n');
+          continue;
+        }
+        
+        // Get response from chatbot
+        const response = await chatbot.getResponse(userInput);
+        console.log(`Bot: ${response}\n`);
         
       } catch (error) {
         console.error('Error:', error);
