@@ -1,0 +1,149 @@
+import OpenAI from 'openai';
+import { config } from './config';
+import { availableTools, executeToolCall, Tool, ToolCall } from './tools';
+
+export interface AgentMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+}
+
+export class Agent {
+  private openai: OpenAI | null = null;
+  private messages: AgentMessage[] = [];
+  private tools: Tool[];
+  private streamMode: boolean;
+
+  constructor(enableTools: boolean = true, streamMode: boolean = false) {
+    this.tools = enableTools ? availableTools : [];
+    this.streamMode = streamMode;
+    
+    if (config.openai.apiKey) {
+      this.openai = new OpenAI({
+        apiKey: config.openai.apiKey,
+      });
+      
+      // Add system message with tool awareness
+      const systemMessage = enableTools
+        ? 'You are a helpful AI assistant with access to various tools. You MUST use these tools when users ask for information that the tools can provide. For example: use get_weather when asked about weather, use get_current_time when asked about time, use calculate for math problems. Always use the appropriate tool rather than saying you cannot help.'
+        : 'You are a helpful AI assistant.';
+        
+      this.messages.push({
+        role: 'system',
+        content: systemMessage,
+      });
+    }
+  }
+
+  async getResponse(userInput: string): Promise<string> {
+    if (!this.openai) {
+      return 'Error: OpenAI client not initialized';
+    }
+
+    try {
+      // Add user message
+      this.messages.push({ role: 'user', content: userInput });
+
+      // Create chat completion with tools
+      const completion = await this.openai.chat.completions.create({
+        model: config.openai.model,
+        messages: this.messages as any,
+        tools: this.tools.length > 0 ? this.tools : undefined,
+        temperature: config.openai.temperature,
+        max_tokens: config.openai.maxTokens,
+      });
+
+      const message = completion.choices[0]?.message;
+      
+      if (!message) {
+        return 'No response from AI';
+      }
+
+      // Handle tool calls
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        // Add assistant message with tool calls
+        this.messages.push({
+          role: 'assistant',
+          content: message.content,
+          tool_calls: message.tool_calls as ToolCall[],
+        });
+
+        // Execute tool calls
+        for (const toolCall of message.tool_calls) {
+          const args = JSON.parse(toolCall.function.arguments);
+          const result = await executeToolCall(toolCall.function.name, args);
+          
+          // Add tool result to messages
+          this.messages.push({
+            role: 'tool',
+            content: result,
+            tool_call_id: toolCall.id,
+          });
+        }
+
+        // Get final response after tool execution
+        const finalCompletion = await this.openai.chat.completions.create({
+          model: config.openai.model,
+          messages: this.messages as any,
+          temperature: config.openai.temperature,
+          max_tokens: config.openai.maxTokens,
+        });
+
+        const finalMessage = finalCompletion.choices[0]?.message?.content || 'No response';
+        this.messages.push({ role: 'assistant', content: finalMessage });
+        
+        return finalMessage;
+      } else {
+        // Regular response without tools
+        const responseContent = message.content || 'No response';
+        this.messages.push({ role: 'assistant', content: responseContent });
+        return responseContent;
+      }
+    } catch (error) {
+      console.error('Agent Error:', error);
+      return 'Error: Failed to get response from agent';
+    }
+  }
+
+  async *getStreamingResponse(userInput: string): AsyncGenerator<string, void, unknown> {
+    if (!this.openai) {
+      yield 'Error: OpenAI client not initialized';
+      return;
+    }
+
+    try {
+      this.messages.push({ role: 'user', content: userInput });
+
+      const stream = await this.openai.chat.completions.create({
+        model: config.openai.model,
+        messages: this.messages as any,
+        temperature: config.openai.temperature,
+        max_tokens: config.openai.maxTokens,
+        stream: true,
+      });
+
+      let fullResponse = '';
+      
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || '';
+        fullResponse += content;
+        yield content;
+      }
+
+      // Save the complete response
+      this.messages.push({ role: 'assistant', content: fullResponse });
+    } catch (error) {
+      console.error('Streaming Error:', error);
+      yield 'Error: Failed to get streaming response';
+    }
+  }
+
+  clearHistory() {
+    this.messages = this.messages.filter(msg => msg.role === 'system');
+  }
+
+  getAvailableTools(): string[] {
+    return this.tools.map(tool => tool.function.name);
+  }
+}

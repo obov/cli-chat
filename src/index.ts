@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { createInterface } from 'readline';
 import { ChatBot } from './chatbot';
+import { Agent } from './agent';
 import { validateConfig } from './config';
 
 const program = new Command();
@@ -15,19 +16,40 @@ program
 program
   .command('chat')
   .description('Start interactive chat session')
-  .option('-m, --mode <mode>', 'Chat mode: echo or openai', 'echo')
+  .option('-m, --mode <mode>', 'Chat mode: echo, openai, or agent', 'echo')
+  .option('-t, --tools', 'Enable tools in agent mode', false)
+  .option('-s, --stream', 'Enable streaming responses in agent mode', false)
   .action(async (options) => {
-    const mode = options.mode as 'echo' | 'openai';
+    const mode = options.mode as 'echo' | 'openai' | 'agent';
     
-    // Validate config if using OpenAI mode
-    if (mode === 'openai' && !validateConfig()) {
+    // Validate config if using OpenAI or Agent mode
+    if ((mode === 'openai' || mode === 'agent') && !validateConfig()) {
       process.exit(1);
     }
     
-    const chatbot = new ChatBot(mode);
-    const modeEmoji = mode === 'echo' ? '🔄' : '🤖';
+    let bot: ChatBot | Agent;
+    let modeEmoji: string;
     
-    console.log(`${modeEmoji} ${mode.toUpperCase()} Mode Started! Type "exit" to quit.\n`);
+    if (mode === 'agent') {
+      bot = new Agent(options.tools, options.stream);
+      modeEmoji = '🤖';
+      console.log(`${modeEmoji} AGENT Mode Started!`);
+      if (options.tools) {
+        console.log(`🔧 Available tools: ${bot.getAvailableTools().join(', ')}`);
+      }
+      if (options.stream) {
+        console.log('📡 Streaming mode enabled');
+      }
+      console.log('Type "exit" to quit, "clear" to reset conversation.\n');
+    } else if (mode === 'openai') {
+      bot = new ChatBot('openai');
+      modeEmoji = '🤖';
+      console.log(`${modeEmoji} OPENAI Mode Started! Type "exit" to quit.\n`);
+    } else {
+      bot = new ChatBot('echo');
+      modeEmoji = '🔄';
+      console.log(`${modeEmoji} ECHO Mode Started! Type "exit" to quit.\n`);
+    }
     
     const rl = createInterface({
       input: process.stdin,
@@ -52,14 +74,22 @@ program
         }
         
         if (userInput.toLowerCase().trim() === 'clear') {
-          chatbot.clearHistory();
+          bot.clearHistory();
           console.log('🗑️  Chat history cleared!\n');
           continue;
         }
         
-        // Get response from chatbot
-        const response = await chatbot.getResponse(userInput);
-        console.log(`Bot: ${response}\n`);
+        // Get response
+        if (mode === 'agent' && options.stream && bot instanceof Agent) {
+          process.stdout.write('Bot: ');
+          for await (const chunk of bot.getStreamingResponse(userInput)) {
+            process.stdout.write(chunk);
+          }
+          process.stdout.write('\n\n');
+        } else {
+          const response = await bot.getResponse(userInput);
+          console.log(`Bot: ${response}\n`);
+        }
         
       } catch (error) {
         console.error('Error:', error);
