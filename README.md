@@ -85,6 +85,6 @@ bun run dev chat --mode agent --tools --stream
 
 Environment variables in `.env`:
 - `OPENAI_API_KEY` - Your OpenAI API key (required for OpenAI/Agent modes)
-- `OPENAI_MODEL` - Model to use (default: gpt-4.1-nano)
+- `OPENAI_MODEL` - Model to use (default: gpt-4o-mini)
 - `OPENAI_TEMPERATURE` - Response creativity (default: 0.7)
 - `OPENAI_MAX_TOKENS` - Max response length (default: 1000)

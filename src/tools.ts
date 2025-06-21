@@ -3,10 +3,12 @@ export interface Tool {
   function: {
     name: string;
     description: string;
+    strict?: boolean;
     parameters: {
       type: 'object';
       properties: Record<string, any>;
       required?: string[];
+      additionalProperties?: boolean;
     };
   };
 }
@@ -26,15 +28,18 @@ export const availableTools: Tool[] = [
     type: 'function',
     function: {
       name: 'get_current_time',
-      description: 'Get the current date and time',
+      description: 'Get the current date and time in a specific timezone',
       parameters: {
         type: 'object',
         properties: {
           timezone: {
             type: 'string',
-            description: 'The timezone to get the time for (e.g., "UTC", "America/New_York")',
+            description: 'The timezone to get the time for (e.g., "UTC", "America/New_York"). Optional - defaults to UTC.',
+            default: 'UTC',
           },
         },
+        required: [],
+        additionalProperties: false,
       },
     },
   },
@@ -48,10 +53,11 @@ export const availableTools: Tool[] = [
         properties: {
           expression: {
             type: 'string',
-            description: 'The mathematical expression to evaluate',
+            description: 'The mathematical expression to evaluate (e.g., "2 + 2", "10 * 5")',
           },
         },
         required: ['expression'],
+        additionalProperties: false,
       },
     },
   },
@@ -65,10 +71,11 @@ export const availableTools: Tool[] = [
         properties: {
           location: {
             type: 'string',
-            description: 'The city name or "here" for current location',
+            description: 'The city name (e.g., "Seoul", "New York") or "here" for current location',
           },
         },
         required: ['location'],
+        additionalProperties: false,
       },
     },
   },
@@ -110,6 +117,8 @@ export async function executeToolCall(name: string, args: any): Promise<string> 
     }
 
     case 'get_weather': {
+      console.log('[TOOL DEBUG] get_weather called with args:', args);
+      
       // Mock weather data - expanded for more locations
       const weatherData: Record<string, any> = {
         'London, UK': { temp: '15°C', condition: 'Cloudy', humidity: '75%' },
