@@ -10,3 +10,11 @@ dist
 .DS_Store
 
 .mcp.json
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+data/

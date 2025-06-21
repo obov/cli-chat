@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import { Agent, AgentMessage } from '../agent';
-import { SessionStore } from '../sessions/session-store';
+import { SessionStore } from '../sessions';
 
 interface WSMessage {
   type: 'chat' | 'clear' | 'getHistory' | 'ping' | 'pong';

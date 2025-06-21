@@ -7,7 +7,10 @@
     "build": "bun build --target=bun src/index.ts --outdir=dist",
     "start": "bun dist/index.js",
     "dev": "bun --hot run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "db:migrate": "bun run src/database/migrate.ts",
+    "db:examples": "bun run src/database/examples.ts",
+    "db:cleanup": "bun -e \"import('./src/database/index.js').then(m => m.cleanupOldData())\""
   },
   "dependencies": {
     "@cli-chatbot/shared": "workspace:*",

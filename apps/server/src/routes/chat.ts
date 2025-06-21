@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Agent } from '../agent';
-import { SessionStore } from '../sessions/session-store';
+import { SessionStore } from '../sessions';
 
 export const chatRouter = Router();
 
@@ -115,4 +115,27 @@ chatRouter.post('/clear', (req, res) => {
     sessionId,
     message: 'Chat history cleared'
   });
+});
+
+// GET /api/chat/history - Get all sessions for current user
+chatRouter.get('/history', (req, res) => {
+  // For now, return current session as we don't have user auth
+  const sessionId = req.query.sessionId || req.sessionID;
+  const session = sessionStore.getSession(sessionId as string);
+  
+  if (!session) {
+    return res.json([]);
+  }
+  
+  // Format for history display
+  const history = [{
+    id: session.id,
+    timestamp: session.lastActivity,
+    messageCount: session.messages.length,
+    preview: session.messages.length > 0 
+      ? session.messages[session.messages.length - 1].content?.substring(0, 100) + '...'
+      : 'No messages'
+  }];
+  
+  res.json(history);
 });

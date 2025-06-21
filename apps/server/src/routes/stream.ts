@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Agent } from '../agent';
-import { SessionStore } from '../sessions/session-store';
+import { SessionStore } from '../sessions';
 
 export const streamRouter = Router();
 
