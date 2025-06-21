@@ -242,4 +242,147 @@ export class Agent {
   getAvailableTools(): string[] {
     return this.tools.map(tool => tool.function.name);
   }
+
+  // New method for SSE streaming that returns structured chunks
+  async *getStreamingResponse(message: string): AsyncGenerator<{
+    type: 'token' | 'tool_call' | 'tool_progress' | 'tool_result';
+    content?: string;
+    name?: string;
+    args?: any;
+    message?: string;
+    result?: any;
+  }> {
+    this.messages.push({ role: 'user', content: message });
+
+    try {
+      const stream = await this.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: this.messages,
+        tools: this.enableTools ? this.tools : undefined,
+        tool_choice: this.enableTools ? 'auto' : undefined,
+        stream: true,
+      });
+
+      let fullResponse = '';
+      const toolCalls: any[] = [];
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        
+        // Handle tool calls in streaming
+        if (delta?.tool_calls) {
+          for (const toolCallDelta of delta.tool_calls) {
+            if (toolCallDelta.index !== undefined) {
+              if (!toolCalls[toolCallDelta.index]) {
+                toolCalls[toolCallDelta.index] = {
+                  id: "",
+                  type: "function",
+                  function: { name: "", arguments: "" }
+                };
+              }
+              
+              const toolCall = toolCalls[toolCallDelta.index];
+              if (toolCallDelta.id) toolCall.id = toolCallDelta.id;
+              if (toolCallDelta.function?.name) toolCall.function.name = toolCallDelta.function.name;
+              if (toolCallDelta.function?.arguments) {
+                toolCall.function.arguments += toolCallDelta.function.arguments;
+              }
+            }
+          }
+        }
+        
+        // Handle regular content
+        const content = delta?.content || '';
+        fullResponse += content;
+        if (content) {
+          yield { type: 'token', content };
+        }
+      }
+
+      // If tool calls were made, execute them
+      if (toolCalls.length > 0) {
+        this.messages.push({
+          role: 'assistant',
+          content: fullResponse || null,
+          tool_calls: toolCalls,
+        });
+
+        // Execute tools with streaming
+        for (const toolCall of toolCalls) {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            
+            // Emit tool call event
+            yield {
+              type: 'tool_call',
+              name: toolCall.function.name,
+              args: args
+            };
+
+            // Stream tool execution progress
+            let fullResult = '';
+            for await (const chunk of executeStreamingToolCall(toolCall.function.name, args)) {
+              const lines = chunk.split('\n');
+              for (const line of lines) {
+                if (line.includes('...')) {
+                  // Progress message
+                  yield {
+                    type: 'tool_progress',
+                    name: toolCall.function.name,
+                    message: line.replace(`[${toolCall.function.name}] `, '')
+                  };
+                } else if (line.includes('Done:') || line.includes('Result:')) {
+                  // Final result
+                  fullResult = line.substring(line.indexOf(':') + 1).trim();
+                }
+              }
+            }
+
+            // Emit tool result event
+            yield {
+              type: 'tool_result',
+              name: toolCall.function.name,
+              result: fullResult
+            };
+
+            this.messages.push({
+              role: 'tool',
+              content: fullResult,
+              tool_call_id: toolCall.id,
+            });
+          } catch (error: any) {
+            const errorMsg = `Error executing ${toolCall.function.name}: ${error.message}`;
+            yield {
+              type: 'tool_result',
+              name: toolCall.function.name,
+              result: errorMsg
+            };
+            
+            this.messages.push({
+              role: 'tool',
+              content: errorMsg,
+              tool_call_id: toolCall.id,
+            });
+          }
+        }
+
+        // Get the final response after tool execution
+        const finalStream = await this.client.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: this.messages,
+          stream: true,
+        });
+
+        for await (const chunk of finalStream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          if (content) {
+            yield { type: 'token', content };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming Error:', error);
+      yield { type: 'token', content: 'Error: Failed to get streaming response' };
+    }
+  }
 }

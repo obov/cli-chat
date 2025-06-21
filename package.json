@@ -20,7 +20,13 @@
     "server": "bun run src/server/index.ts",
     "server:dev": "bun --hot run src/server/index.ts"
   },
-  "keywords": ["cli", "chatbot", "openai", "typescript", "bun"],
+  "keywords": [
+    "cli",
+    "chatbot",
+    "openai",
+    "typescript",
+    "bun"
+  ],
   "license": "MIT",
   "dependencies": {
     "body-parser": "^2.2.0",
@@ -34,9 +40,11 @@
   "devDependencies": {
     "@types/body-parser": "^1.19.6",
     "@types/cors": "^2.8.19",
+    "@types/eventsource": "^3.0.0",
     "@types/express": "^5.0.3",
     "@types/express-session": "^1.18.2",
     "@types/node": "^20.10.0",
+    "eventsource": "^4.0.0",
     "typescript": "^5.3.0"
   }
 }
