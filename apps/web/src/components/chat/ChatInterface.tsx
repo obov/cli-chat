@@ -7,13 +7,13 @@ interface ChatInterfaceProps {
   tools?: any[];
 }
 
-export default function ChatInterface({ session, tools }: ChatInterfaceProps) {
-  const { messages, isConnected, isStreaming, sendMessage, clearMessages } = useChat();
+export default function ChatInterface({ tools }: ChatInterfaceProps) {
+  const { messages, isConnected, connectionState, isStreaming, sendMessage, clearMessages } = useChat();
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* Connection Status */}
-      {!isConnected && (
+      {/* Connection Status Banner - Only show when disconnected */}
+      {connectionState === 'disconnected' && (
         <div className="bg-red-500 text-white px-4 py-2 text-center">
           Disconnected from server. Attempting to reconnect...
         </div>
@@ -27,8 +27,18 @@ export default function ChatInterface({ session, tools }: ChatInterfaceProps) {
       {/* Input Area */}
       <div className="border-t border-gray-200 bg-white">
         <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-500">
-          <span className={`inline-block w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          {isConnected ? 'Connected' : 'Disconnected'}
+          <span className={`inline-block w-2 h-2 rounded-full ${
+            connectionState === 'connected' ? 'bg-green-500' : 
+            connectionState === 'connecting' ? 'bg-yellow-500 animate-pulse' : 
+            connectionState === 'disconnected' ? 'bg-red-500' : 
+            'bg-gray-300'
+          }`} />
+          <span>
+            {connectionState === 'connected' ? 'Connected' : 
+             connectionState === 'connecting' ? 'Connecting...' : 
+             connectionState === 'disconnected' ? 'Disconnected' : 
+             'Idle'}
+          </span>
           {tools && tools.length > 0 && (
             <span className="ml-auto">
               {tools.length} tools available

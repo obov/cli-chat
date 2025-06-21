@@ -47,8 +47,12 @@ export const api = {
   },
 
   async getChatHistory() {
-    const res = await fetch(`${API_BASE}/history`);
-    if (!res.ok) throw new Error('Failed to get history');
+    const sessionId = getSessionId();
+    const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}`);
+    if (!res.ok) {
+      // If session doesn't exist, return empty history
+      return { messages: [] };
+    }
     return res.json();
   },
 

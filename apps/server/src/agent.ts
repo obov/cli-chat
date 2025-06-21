@@ -16,6 +16,7 @@ export class Agent {
   private tools: Tool[];
   private enableTools: boolean;
   private streamMode: boolean;
+  private clientMetadata: { timezone?: string; locale?: string } = {};
 
   constructor(enableTools: boolean = true, streamMode: boolean = false) {
     this.enableTools = enableTools;
@@ -75,6 +76,17 @@ export class Agent {
         // Execute tool calls
         for (const toolCall of message.tool_calls) {
           const args = JSON.parse(toolCall.function.arguments);
+          
+          // Auto-inject client timezone and locale for get_current_time if not specified
+          if (toolCall.function.name === 'get_current_time') {
+            if (!args.timezone && this.clientMetadata.timezone) {
+              args.timezone = this.clientMetadata.timezone;
+            }
+            if (!args.locale && this.clientMetadata.locale) {
+              args.locale = this.clientMetadata.locale;
+            }
+          }
+          
           const result = await executeToolCall(toolCall.function.name, args);
           
           // Add tool result to messages
@@ -175,6 +187,11 @@ export class Agent {
           try {
             const args = JSON.parse(toolCall.function.arguments);
             
+            // Auto-inject client timezone for get_current_time if not specified
+            if (toolCall.function.name === 'get_current_time' && !args.timezone && this.clientMetadata.timezone) {
+              args.timezone = this.clientMetadata.timezone;
+            }
+            
             // Stream tool execution progress
             let fullResult = '';
             for await (const chunk of executeStreamingToolCall(toolCall.function.name, args)) {
@@ -242,6 +259,10 @@ export class Agent {
     // Keep system message and set new conversation history
     const systemMessage = this.messages.find(msg => msg.role === 'system');
     this.messages = systemMessage ? [systemMessage, ...messages] : messages;
+  }
+
+  setClientMetadata(metadata: { timezone?: string; locale?: string }) {
+    this.clientMetadata = metadata;
   }
 
   getAvailableTools(): string[] {
@@ -327,6 +348,11 @@ export class Agent {
         for (const toolCall of toolCalls) {
           try {
             const args = JSON.parse(toolCall.function.arguments);
+            
+            // Auto-inject client timezone for get_current_time if not specified
+            if (toolCall.function.name === 'get_current_time' && !args.timezone && this.clientMetadata.timezone) {
+              args.timezone = this.clientMetadata.timezone;
+            }
             
             // Emit tool call event
             yield {

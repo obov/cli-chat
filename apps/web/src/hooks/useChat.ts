@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
 import type { ChatMessage } from '@cli-chatbot/shared';
 
@@ -88,7 +88,7 @@ export function useChat() {
     ? `wss://${window.location.host}/ws`
     : `ws://${window.location.host}/ws`;
     
-  const { isConnected, sendChatMessage } = useWebSocket(wsUrl, {
+  const { isConnected, connectionState, sendChatMessage } = useWebSocket(wsUrl, {
     onMessage: handleWebSocketMessage,
   });
 
@@ -114,6 +114,7 @@ export function useChat() {
   return {
     messages,
     isConnected,
+    connectionState,
     isStreaming,
     sendMessage,
     clearMessages,

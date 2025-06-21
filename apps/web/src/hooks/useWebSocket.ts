@@ -9,9 +9,11 @@ interface UseWebSocketOptions {
 let globalWs: WebSocket | null = null;
 let connectionCount = 0;
 
+export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnected';
+
 export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   const { onMessage, reconnectDelay = 3000 } = options;
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>('idle');
   const [messages, setMessages] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
@@ -21,16 +23,35 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       // Reuse existing connection if available
       if (globalWs && globalWs.readyState === WebSocket.OPEN) {
         wsRef.current = globalWs;
-        setIsConnected(true);
+        setConnectionState('connected');
         console.log('Reusing existing WebSocket connection');
         return;
       }
       
-      const ws = new WebSocket(url);
+      // Check if already connecting
+      if (globalWs && globalWs.readyState === WebSocket.CONNECTING) {
+        wsRef.current = globalWs;
+        setConnectionState('connecting');
+        console.log('WebSocket is already connecting');
+        return;
+      }
+      
+      setConnectionState('connecting');
+      
+      // Get browser timezone
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const locale = navigator.language || 'en-US';
+      
+      // Add timezone and locale as query parameters
+      const wsUrl = new URL(url);
+      wsUrl.searchParams.set('tz', timezone);
+      wsUrl.searchParams.set('locale', locale);
+      
+      const ws = new WebSocket(wsUrl.toString());
       globalWs = ws;
       
       ws.onopen = () => {
-        setIsConnected(true);
+        setConnectionState('connected');
         console.log('WebSocket connected to:', url);
         console.log('WebSocket readyState:', ws.readyState);
         
@@ -52,16 +73,18 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
+        setConnectionState('disconnected');
       };
 
       ws.onclose = (event) => {
-        setIsConnected(false);
+        setConnectionState('disconnected');
         wsRef.current = null;
         globalWs = null;
         console.log('WebSocket closed. Code:', event.code, 'Reason:', event.reason);
         
         // Attempt to reconnect only if not a normal closure
         if (event.code !== 1000) {
+          setConnectionState('connecting');
           reconnectTimeoutRef.current = setTimeout(() => {
             console.log('Attempting to reconnect...');
             connect();
@@ -72,7 +95,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       wsRef.current = ws;
     } catch (error) {
       console.error('Failed to connect to WebSocket:', error);
-      setIsConnected(false);
+      setConnectionState('disconnected');
     }
   };
 
@@ -103,7 +126,7 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
     }
     wsRef.current?.close();
     wsRef.current = null;
-    setIsConnected(false);
+    setConnectionState('disconnected');
   }, []);
 
   useEffect(() => {
@@ -116,15 +139,15 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
       connectionCount--;
       console.log(`WebSocket hook unmounting. Connection count: ${connectionCount}`);
       
-      // Only disconnect if this is the last component using the connection
-      if (connectionCount === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-        disconnect();
-      }
+      // Don't disconnect on unmount - keep connection alive for navigation
+      // Only clear the local reference
+      wsRef.current = null;
     };
   }, []); // Run only once on mount
 
   return {
-    isConnected,
+    isConnected: connectionState === 'connected',
+    connectionState,
     messages,
     sendMessage,
     sendChatMessage,

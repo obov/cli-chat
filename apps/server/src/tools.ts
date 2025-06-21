@@ -39,6 +39,11 @@ function registerTools() {
             description: 'The timezone to get the time for (e.g., "UTC", "America/New_York"). Optional - defaults to UTC.',
             default: 'UTC',
           },
+          locale: {
+            type: 'string',
+            description: 'The locale to format the time (e.g., "en-US", "ko-KR"). Optional - defaults to en-US.',
+            default: 'en-US',
+          },
         },
         required: [],
         additionalProperties: false,
@@ -69,7 +74,9 @@ function registerTools() {
           timeZoneName: 'short',
         };
         
-        const result = date.toLocaleString('en-US', options);
+        // Get locale from args or default to en-US
+        const locale = args.locale || 'en-US';
+        const result = date.toLocaleString(locale, options);
         yield `[get_current_time] Done: ${result}`;
         return result;
       } catch (error) {

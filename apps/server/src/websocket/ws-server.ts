@@ -53,9 +53,18 @@ export class WebSocketManager {
       console.log(`[WebSocket] New connection from ${remoteAddress}`);
       console.log(`[WebSocket] User-Agent: ${userAgent}`);
       
+      // Parse timezone and locale from query parameters
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const timezone = url.searchParams.get('tz') || 'UTC';
+      const locale = url.searchParams.get('locale') || 'en-US';
+      console.log(`[WebSocket] Client timezone: ${timezone}, locale: ${locale}`);
+      
       // Generate client ID
       const clientId = this.generateClientId();
       this.clients.set(clientId, ws);
+      
+      // Store client metadata
+      (ws as any).clientMetadata = { timezone, locale };
       console.log(`[WebSocket] Client ${clientId} connected. Total clients: ${this.clients.size}`);
 
       // Send welcome message
@@ -140,6 +149,12 @@ export class WebSocketManager {
       const agent = new Agent(enableTools, true);
       if (session.messages.length > 0) {
         agent.setConversationHistory(session.messages);
+      }
+      
+      // Pass client metadata to agent
+      const clientMetadata = (ws as any).clientMetadata;
+      if (clientMetadata) {
+        agent.setClientMetadata(clientMetadata);
       }
 
       // Send session ID
