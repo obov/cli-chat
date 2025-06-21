@@ -233,6 +233,12 @@ export class Agent {
     this.messages = this.messages.filter(msg => msg.role === 'system');
   }
 
+  setConversationHistory(messages: AgentMessage[]) {
+    // Keep system message and set new conversation history
+    const systemMessage = this.messages.find(msg => msg.role === 'system');
+    this.messages = systemMessage ? [systemMessage, ...messages] : messages;
+  }
+
   getAvailableTools(): string[] {
     return this.tools.map(tool => tool.function.name);
   }
