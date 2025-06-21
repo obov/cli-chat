@@ -13,10 +13,10 @@
     "dev": "bun run src/index.ts",
     "test": "bun run tests/chatbot.test.ts",
     "chat": "bun run src/index.ts chat",
-    "o": "bun run src/index.ts chat -m openai",
-    "oa": "bun run src/index.ts chat -m openai -a",
-    "os": "bun run src/index.ts chat -m openai -s",
-    "ot": "bun run src/index.ts chat -m openai -t"
+    "agent": "bun run src/index.ts chat -m agent",
+    "agent:stream": "bun run src/index.ts chat -m agent -s",
+    "agent:all": "bun run src/index.ts chat -m agent -a",
+    "echo": "bun run src/index.ts chat -m echo"
   },
   "keywords": ["cli", "chatbot", "openai", "typescript", "bun"],
   "license": "MIT",

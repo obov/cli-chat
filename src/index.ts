@@ -16,23 +16,22 @@ program
 program
   .command('chat')
   .description('Start interactive chat session')
-  .option('-m, --mode <mode>', 'Chat mode: echo, openai, or agent', 'echo')
-  .option('-t, --tools', 'Enable tools (works with openai and agent modes)', false)
+  .option('-m, --mode <mode>', 'Chat mode: echo or agent', 'agent')
+  .option('-t, --tools', 'Enable tools (deprecated - agent mode has tools by default)', false)
   .option('-s, --stream', 'Enable streaming responses', false)
   .option('--store', 'Enable server-side storage (Responses API)', false)
   .option('-a, --all', 'Enable all features (tools, stream, store)', false)
   .action(async (options) => {
-    const mode = options.mode as 'echo' | 'openai' | 'agent';
+    const mode = options.mode as 'echo' | 'agent';
     
     // Handle --all flag
     if (options.all) {
-      options.tools = true;
       options.stream = true;
       options.store = true;
     }
     
-    // Validate config if using OpenAI or Agent mode
-    if ((mode === 'openai' || mode === 'agent') && !validateConfig()) {
+    // Validate config if using Agent mode
+    if (mode === 'agent' && !validateConfig()) {
       process.exit(1);
     }
     
@@ -48,22 +47,12 @@ program
       if (options.stream) {
         console.log('📡 Streaming mode enabled');
       }
-      console.log('Type "exit" to quit, "clear" to reset conversation.\n');
-    } else if (mode === 'openai') {
-      bot = new ChatBot('openai', options.store, options.tools);
-      modeEmoji = '🤖';
-      console.log(`${modeEmoji} OPENAI Mode Started!`);
-      if (options.tools) {
-        console.log(`🔧 Available tools: ${bot.getAvailableTools().join(', ')}`);
-      }
       if (options.store) {
-        console.log('💾 Server-side storage enabled (Responses API)');
+        console.log('💾 Server-side storage enabled');
       }
-      if (options.stream) {
-        console.log('📡 Streaming mode enabled');
-      }
-      console.log('Type "exit" to quit.\n');
+      console.log('Type "exit" to quit, "clear" to reset conversation.\n');
     } else {
+      // Echo mode only
       bot = new ChatBot('echo');
       modeEmoji = '🔄';
       console.log(`${modeEmoji} ECHO Mode Started! Type "exit" to quit.\n`);
