@@ -1,0 +1,19 @@
+meta {
+  name: chat-stream-simple
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{host}}/api/chat/stream?message=안녕하세요
+  body: none
+  auth: inherit
+}
+
+params:query {
+  message: 안녕하세요
+}
+
+headers {
+  Accept: text/event-stream
+}

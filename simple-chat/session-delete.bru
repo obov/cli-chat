@@ -1,0 +1,11 @@
+meta {
+  name: session-delete
+  type: http
+  seq: 7
+}
+
+delete {
+  url: http://localhost:3002/api/chat/sessions/user-123
+  body: none
+  auth: inherit
+}

@@ -1,0 +1,24 @@
+meta {
+  name: chat-stream-post
+  type: http
+  seq: 10
+}
+
+post {
+  url: http://localhost:3002/api/chat/stream
+  body: json
+  auth: inherit
+}
+
+headers {
+  Accept: text/event-stream
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "message": "Calculate 123 * 456 and tell me the result",
+    "sessionId": "user-456",
+    "enableTools": true
+  }
+}

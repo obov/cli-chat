@@ -252,10 +252,15 @@ export class Agent {
     message?: string;
     result?: any;
   }> {
+    if (!this.openai) {
+      yield { type: 'token', content: 'Error: OpenAI client not initialized' };
+      return;
+    }
+
     this.messages.push({ role: 'user', content: message });
 
     try {
-      const stream = await this.client.chat.completions.create({
+      const stream = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: this.messages,
         tools: this.enableTools ? this.tools : undefined,
@@ -367,7 +372,7 @@ export class Agent {
         }
 
         // Get the final response after tool execution
-        const finalStream = await this.client.chat.completions.create({
+        const finalStream = await this.openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: this.messages,
           stream: true,

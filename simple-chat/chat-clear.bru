@@ -1,0 +1,21 @@
+meta {
+  name: chat-clear
+  type: http
+  seq: 8
+}
+
+post {
+  url: http://localhost:3002/api/chat/clear
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "sessionId": "user-123"
+  }
+}

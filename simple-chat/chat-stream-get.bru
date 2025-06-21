@@ -1,0 +1,21 @@
+meta {
+  name: chat-stream-get
+  type: http
+  seq: 9
+}
+
+get {
+  url: http://localhost:3002/api/chat/stream?message=What%20is%20the%20weather%20in%20Seoul%3F&enableTools=true&sessionId=user-123
+  body: none
+  auth: inherit
+}
+
+params:query {
+  message: What is the weather in Seoul?
+  enableTools: true
+  sessionId: user-123
+}
+
+headers {
+  Accept: text/event-stream
+}

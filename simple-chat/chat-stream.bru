@@ -1,0 +1,24 @@
+meta {
+  name: chat-stream
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:3002/api/chat/stream
+  body: json
+  auth: inherit
+}
+
+headers {
+  Accept: text/event-stream
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "message": "서울의 날씨를 알려주고, 섭씨를 화씨로 변환해줘",
+    "sessionId": "session-123",
+    "enableTools": true
+  }
+}
