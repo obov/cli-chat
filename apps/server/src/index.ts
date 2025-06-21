@@ -8,6 +8,7 @@ import { chatRouter } from './routes/chat';
 import { toolsRouter } from './routes/tools';
 import { healthRouter } from './routes/health';
 import { streamRouter } from './routes/stream';
+import { sessionRouter } from './routes/session';
 import { errorHandler } from './middleware/error-handler';
 import { SessionStore } from './sessions/session-store';
 import { WebSocketManager } from './websocket/ws-server';
@@ -69,6 +70,7 @@ SessionStore.getInstance();
 app.use('/api/chat', chatRouter);
 app.use('/api/chat/stream', streamRouter);
 app.use('/api/tools', toolsRouter);
+app.use('/api/session', sessionRouter);
 app.use('/api/health', healthRouter);
 
 // Error handling

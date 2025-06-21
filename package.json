@@ -1,52 +1,16 @@
 {
-  "name": "cli-chatbot",
-  "version": "1.0.0",
-  "description": "A CLI chatbot powered by OpenAI",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "cli-chatbot": "./dist/index.js"
-  },
+  "name": "cli-chatbot-monorepo",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "build": "bun build --target=bun src/index.ts --outdir=dist",
-    "start": "bun dist/index.js",
-    "dev": "bun run src/index.ts",
-    "test": "bun run tests/chatbot.test.ts",
-    "chat": "bun run src/index.ts chat",
-    "agent": "bun run src/index.ts chat -m agent",
-    "agent:stream": "bun run src/index.ts chat -m agent -s",
-    "agent:all": "bun run src/index.ts chat -m agent -a",
-    "echo": "bun run src/index.ts chat -m echo",
-    "server": "bun run src/server/index.ts",
-    "server:dev": "bun --hot run src/server/index.ts"
-  },
-  "keywords": [
-    "cli",
-    "chatbot",
-    "openai",
-    "typescript",
-    "bun"
-  ],
-  "license": "MIT",
-  "dependencies": {
-    "@types/ws": "^8.18.1",
-    "body-parser": "^2.2.0",
-    "commander": "^11.1.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "express-session": "^1.18.1",
-    "openai": "^5.6.0",
-    "ws": "^8.18.2"
+    "dev": "bun run dev:server & bun run dev:web",
+    "dev:cli": "cd apps/cli && bun run dev",
+    "dev:server": "cd apps/server && bun run dev",
+    "dev:web": "cd apps/web && bun run dev",
+    "build": "bun run --filter '*' build",
+    "clean": "rm -rf apps/*/dist packages/*/dist"
   },
   "devDependencies": {
-    "@types/body-parser": "^1.19.6",
-    "@types/cors": "^2.8.19",
-    "@types/eventsource": "^3.0.0",
-    "@types/express": "^5.0.3",
-    "@types/express-session": "^1.18.2",
-    "@types/node": "^20.10.0",
-    "eventsource": "^4.0.0",
     "typescript": "^5.3.0"
   }
 }

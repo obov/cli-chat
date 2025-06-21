@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { Agent } from '../../agent';
+import { Agent } from '../agent';
 import { SessionStore } from '../sessions/session-store';
 
 export const chatRouter = Router();

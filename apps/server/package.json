@@ -1,0 +1,32 @@
+{
+  "name": "@cli-chatbot/server",
+  "version": "1.0.0",
+  "description": "Express server with WebSocket support for CLI chatbot",
+  "type": "module",
+  "scripts": {
+    "build": "bun build --target=bun src/index.ts --outdir=dist",
+    "start": "bun dist/index.js",
+    "dev": "bun --hot run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@cli-chatbot/shared": "workspace:*",
+    "@types/ws": "^8.18.1",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "openai": "^5.6.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/body-parser": "^1.19.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/express-session": "^1.18.2",
+    "@types/node": "^20.10.0",
+    "bun-types": "^1.2.17",
+    "typescript": "^5.3.0"
+  }
+}

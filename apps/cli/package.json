@@ -1,0 +1,31 @@
+{
+  "name": "@cli-chatbot/cli",
+  "version": "1.0.0",
+  "description": "CLI chatbot powered by OpenAI",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "cli-chatbot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build --target=bun src/index.ts --outdir=dist",
+    "start": "bun dist/index.js",
+    "dev": "bun run src/index.ts",
+    "test": "bun run tests/chatbot.test.ts",
+    "chat": "bun run src/index.ts chat",
+    "agent": "bun run src/index.ts chat -m agent",
+    "agent:stream": "bun run src/index.ts chat -m agent -s",
+    "agent:all": "bun run src/index.ts chat -m agent -a",
+    "echo": "bun run src/index.ts chat -m echo"
+  },
+  "dependencies": {
+    "@cli-chatbot/shared": "workspace:*",
+    "commander": "^11.1.0",
+    "dotenv": "^16.5.0",
+    "openai": "^5.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}

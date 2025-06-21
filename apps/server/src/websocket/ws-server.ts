@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
-import { Agent, AgentMessage } from '../../agent';
+import { Agent, AgentMessage } from '../agent';
 import { SessionStore } from '../sessions/session-store';
 
 interface WSMessage {
@@ -28,18 +28,35 @@ export class WebSocketManager {
   private sessionStore: SessionStore;
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ server, path: '/ws' });
+    this.wss = new WebSocketServer({ 
+      server, 
+      path: '/ws',
+      verifyClient: (info) => {
+        // Accept connections from any origin in development
+        if (process.env.NODE_ENV === 'development') {
+          return true;
+        }
+        // In production, you might want to check the origin
+        const origin = info.origin || info.req.headers.origin;
+        console.log(`[WebSocket] Connection attempt from origin: ${origin}`);
+        return true;
+      }
+    });
     this.sessionStore = SessionStore.getInstance();
     this.initializeWebSocket();
   }
 
   private initializeWebSocket() {
     this.wss.on('connection', (ws: WebSocket, req) => {
-      console.log(`[WebSocket] New connection from ${req.socket.remoteAddress}`);
+      const remoteAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
+      console.log(`[WebSocket] New connection from ${remoteAddress}`);
+      console.log(`[WebSocket] User-Agent: ${userAgent}`);
       
       // Generate client ID
       const clientId = this.generateClientId();
       this.clients.set(clientId, ws);
+      console.log(`[WebSocket] Client ${clientId} connected. Total clients: ${this.clients.size}`);
 
       // Send welcome message
       this.sendMessage(ws, {
