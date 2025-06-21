@@ -69,6 +69,14 @@ export class SessionStore {
     }
   }
 
+  updateSession(sessionId: string, messages: Message[]): void {
+    const session = this.getSession(sessionId);
+    if (session) {
+      session.messages = messages;
+      session.lastActivity = new Date();
+    }
+  }
+
   private startCleanupInterval(): void {
     setInterval(() => {
       const now = Date.now();

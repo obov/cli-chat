@@ -7,6 +7,7 @@ export interface AgentMessage {
   content: string | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  timestamp?: string;
 }
 
 export class Agent {
@@ -45,7 +46,7 @@ export class Agent {
 
     try {
       // Add user message
-      this.messages.push({ role: 'user', content: userInput });
+      this.messages.push({ role: 'user', content: userInput, timestamp: new Date().toISOString() });
 
       // Create chat completion with tools
       const completion = await this.openai.chat.completions.create({
@@ -93,13 +94,13 @@ export class Agent {
         });
 
         const finalMessage = finalCompletion.choices[0]?.message?.content || 'No response';
-        this.messages.push({ role: 'assistant', content: finalMessage });
+        this.messages.push({ role: 'assistant', content: finalMessage, timestamp: new Date().toISOString() });
         
         return finalMessage;
       } else {
         // Regular response without tools
         const responseContent = message.content || 'No response';
-        this.messages.push({ role: 'assistant', content: responseContent });
+        this.messages.push({ role: 'assistant', content: responseContent, timestamp: new Date().toISOString() });
         return responseContent;
       }
     } catch (error) {
@@ -115,7 +116,7 @@ export class Agent {
     }
 
     try {
-      this.messages.push({ role: 'user', content: userInput });
+      this.messages.push({ role: 'user', content: userInput, timestamp: new Date().toISOString() });
 
       const stream = await this.openai.chat.completions.create({
         model: config.openai.model,
@@ -166,6 +167,7 @@ export class Agent {
           role: 'assistant',
           content: fullResponse || null,
           tool_calls: toolCalls,
+          timestamp: new Date().toISOString()
         });
 
         // Execute tools with streaming
@@ -196,6 +198,7 @@ export class Agent {
               role: 'tool',
               content: fullResult,
               tool_call_id: toolCall.id,
+              timestamp: new Date().toISOString()
             });
             
             yield '\n';
@@ -245,8 +248,12 @@ export class Agent {
     return this.tools.map(tool => tool.function.name);
   }
 
-  // New method for SSE streaming that returns structured chunks
-  async *getStreamingResponse(message: string): AsyncGenerator<{
+  getMessages(): AgentMessage[] {
+    return this.messages;
+  }
+
+  // New method for SSE/WebSocket streaming that returns structured chunks
+  async *getStructuredStreamingResponse(message: string): AsyncGenerator<{
     type: 'token' | 'tool_call' | 'tool_progress' | 'tool_result';
     content?: string;
     name?: string;
@@ -259,7 +266,7 @@ export class Agent {
       return;
     }
 
-    this.messages.push({ role: 'user', content: message });
+    this.messages.push({ role: 'user', content: message, timestamp: new Date().toISOString() });
 
     try {
       const stream = await this.openai.chat.completions.create({
@@ -313,6 +320,7 @@ export class Agent {
           role: 'assistant',
           content: fullResponse || null,
           tool_calls: toolCalls,
+          timestamp: new Date().toISOString()
         });
 
         // Execute tools with streaming
@@ -357,6 +365,7 @@ export class Agent {
               role: 'tool',
               content: fullResult,
               tool_call_id: toolCall.id,
+              timestamp: new Date().toISOString()
             });
           } catch (error: any) {
             const errorMsg = `Error executing ${toolCall.function.name}: ${error.message}`;
@@ -381,12 +390,20 @@ export class Agent {
           stream: true,
         });
 
+        let finalResponse = '';
         for await (const chunk of finalStream) {
           const content = chunk.choices[0]?.delta?.content || '';
           if (content) {
+            finalResponse += content;
             yield { type: 'token', content };
           }
         }
+        
+        // Add final response to messages
+        this.messages.push({ role: 'assistant', content: finalResponse, timestamp: new Date().toISOString() });
+      } else {
+        // No tool calls, add the response to messages
+        this.messages.push({ role: 'assistant', content: fullResponse, timestamp: new Date().toISOString() });
       }
     } catch (error) {
       console.error('Streaming Error:', error);

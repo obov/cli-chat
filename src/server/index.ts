@@ -3,12 +3,14 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import session from 'express-session';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 import { chatRouter } from './routes/chat';
 import { toolsRouter } from './routes/tools';
 import { healthRouter } from './routes/health';
 import { streamRouter } from './routes/stream';
 import { errorHandler } from './middleware/error-handler';
 import { SessionStore } from './sessions/session-store';
+import { WebSocketManager } from './websocket/ws-server';
 
 dotenv.config();
 
@@ -72,8 +74,14 @@ app.use('/api/health', healthRouter);
 // Error handling
 app.use(errorHandler);
 
+// Create HTTP server
+const server = createServer(app);
+
+// Initialize WebSocket server
+const wsManager = new WebSocketManager(server);
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log('📡 Available endpoints:');
   console.log(`   POST   /api/chat`);
@@ -82,6 +90,8 @@ app.listen(PORT, () => {
   console.log(`   GET    /api/tools`);
   console.log(`   DELETE /api/chat/sessions/:id`);
   console.log(`   GET    /api/health`);
+  console.log(`   WS     /ws (WebSocket endpoint)`);
 });
 
 export default app;
+export { wsManager };
