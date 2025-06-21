@@ -8,3 +8,5 @@ dist
 .claude
 
 .DS_Store
+
+.mcp.json
