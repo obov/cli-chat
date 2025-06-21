@@ -1,3 +1,5 @@
+import { defaultToolManager, ToolManager, BaseTool } from './tool-manager';
+
 export interface Tool {
   type: 'function';
   function: {
@@ -22,11 +24,11 @@ export interface ToolCall {
   };
 }
 
-// Example tools that the agent can use
-export const availableTools: Tool[] = [
-  {
-    type: 'function',
-    function: {
+// Register all available tools
+function registerTools() {
+  // get_current_time tool
+  defaultToolManager.registerTool(
+    {
       name: 'get_current_time',
       description: 'Get the current date and time in a specific timezone',
       parameters: {
@@ -42,49 +44,7 @@ export const availableTools: Tool[] = [
         additionalProperties: false,
       },
     },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'calculate',
-      description: 'Perform basic mathematical calculations',
-      parameters: {
-        type: 'object',
-        properties: {
-          expression: {
-            type: 'string',
-            description: 'The mathematical expression to evaluate (e.g., "2 + 2", "10 * 5")',
-          },
-        },
-        required: ['expression'],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_weather',
-      description: 'Get the current weather for any location. Use this when users ask about weather anywhere.',
-      parameters: {
-        type: 'object',
-        properties: {
-          location: {
-            type: 'string',
-            description: 'The city name (e.g., "Seoul", "New York") or "here" for current location',
-          },
-        },
-        required: ['location'],
-        additionalProperties: false,
-      },
-    },
-  },
-];
-
-// Tool implementations
-export async function executeToolCall(name: string, args: any): Promise<string> {
-  switch (name) {
-    case 'get_current_time': {
+    async (args: any) => {
       const timezone = args.timezone || 'UTC';
       try {
         const date = new Date();
@@ -104,8 +64,26 @@ export async function executeToolCall(name: string, args: any): Promise<string> 
         return `Error: Invalid timezone "${timezone}"`;
       }
     }
+  );
 
-    case 'calculate': {
+  // calculate tool
+  defaultToolManager.registerTool(
+    {
+      name: 'calculate',
+      description: 'Perform basic mathematical calculations',
+      parameters: {
+        type: 'object',
+        properties: {
+          expression: {
+            type: 'string',
+            description: 'The mathematical expression to evaluate (e.g., "2 + 2", "10 * 5")',
+          },
+        },
+        required: ['expression'],
+        additionalProperties: false,
+      },
+    },
+    async (args: any) => {
       try {
         // Simple safe math evaluation
         const expression = args.expression.replace(/[^0-9+\-*/().\s]/g, '');
@@ -115,8 +93,27 @@ export async function executeToolCall(name: string, args: any): Promise<string> 
         return `Error: Invalid expression "${args.expression}"`;
       }
     }
+  );
 
-    case 'get_weather': {
+  // get_weather tool
+  defaultToolManager.registerTool(
+    {
+      name: 'get_weather',
+      description: 'Get the current weather for any location. Use this when users ask about weather anywhere.',
+      parameters: {
+        type: 'object',
+        properties: {
+          location: {
+            type: 'string',
+            description: 'The city name (e.g., "Seoul", "New York") or "here" for current location',
+          },
+        },
+        required: ['location'],
+        additionalProperties: false,
+      },
+    },
+
+    async (args: any) => {
       console.log('[TOOL DEBUG] get_weather called with args:', args);
       
       // Mock weather data - expanded for more locations
@@ -155,8 +152,24 @@ export async function executeToolCall(name: string, args: any): Promise<string> 
       
       return `Weather in ${args.location}: ${data.temp}, ${data.condition}, Humidity: ${data.humidity}`;
     }
+  );
+}
 
-    default:
-      return `Unknown tool: ${name}`;
+// Initialize tools
+registerTools();
+
+// Export for backward compatibility
+export const availableTools: Tool[] = defaultToolManager.getToolsForProvider('openai');
+
+// Tool execution wrapper for backward compatibility
+export async function executeToolCall(name: string, args: any): Promise<string> {
+  const result = await defaultToolManager.executeTool(name, args);
+  if (result.success) {
+    return result.data || '';
+  } else {
+    return result.error || `Unknown tool: ${name}`;
   }
 }
+
+// Export the tool manager for direct access if needed
+export { defaultToolManager as toolManager };
