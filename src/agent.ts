@@ -13,9 +13,11 @@ export class Agent {
   private openai: OpenAI | null = null;
   private messages: AgentMessage[] = [];
   private tools: Tool[];
+  private enableTools: boolean;
   private streamMode: boolean;
 
   constructor(enableTools: boolean = true, streamMode: boolean = false) {
+    this.enableTools = enableTools;
     this.tools = enableTools ? availableTools : [];
     this.streamMode = streamMode;
     
@@ -26,7 +28,7 @@ export class Agent {
       
       // Add system message with tool awareness
       const systemMessage = enableTools
-        ? 'You are a helpful AI assistant with access to various tools. You MUST use these tools when users ask for information that the tools can provide. For example: use get_weather when asked about weather, use get_current_time when asked about time, use calculate for math problems. Always use the appropriate tool rather than saying you cannot help.'
+        ? 'You are a helpful AI assistant with access to various tools. You MUST use these tools when users ask for information that the tools can provide. For example: use get_weather when asked about weather, use get_current_time when asked about time, use calculate for math problems. Always use the appropriate tool rather than saying you cannot help. NEVER describe or mention tool calls in your text response - just use them directly.'
         : 'You are a helpful AI assistant.';
         
       this.messages.push({
@@ -303,6 +305,7 @@ export class Agent {
           yield { type: 'token', content };
         }
       }
+
 
       // If tool calls were made, execute them
       if (toolCalls.length > 0) {

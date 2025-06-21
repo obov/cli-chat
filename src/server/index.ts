@@ -15,6 +15,34 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const startTime = Date.now();
+  
+  console.log(`\n[${timestamp}] ${req.method} ${req.path}`);
+  
+  // Log query parameters
+  if (Object.keys(req.query).length > 0) {
+    console.log('Query:', req.query);
+  }
+  
+  // Log body for POST/PUT/PATCH
+  if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+  }
+  
+  // Log response
+  const originalSend = res.send;
+  res.send = function(data: any) {
+    const duration = Date.now() - startTime;
+    console.log(`Response: ${res.statusCode} - ${duration}ms`);
+    return originalSend.call(this, data);
+  };
+  
+  next();
+});
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
