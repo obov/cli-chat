@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { config } from './config';
-import { availableTools, executeToolCall, Tool, ToolCall } from './tools';
+import { availableTools, executeToolCall, executeStreamingToolCall, Tool, ToolCall } from './tools';
 
 export interface AgentMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -118,21 +118,111 @@ export class Agent {
       const stream = await this.openai.chat.completions.create({
         model: config.openai.model,
         messages: this.messages as any,
+        tools: this.tools.length > 0 ? this.tools : undefined,
         temperature: config.openai.temperature,
         max_tokens: config.openai.maxTokens,
         stream: true,
       });
 
       let fullResponse = '';
+      let toolCalls: any[] = [];
       
       for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
+        const delta = chunk.choices[0]?.delta;
+        
+        // Handle tool calls in streaming
+        if (delta?.tool_calls) {
+          for (const toolCallDelta of delta.tool_calls) {
+            if (toolCallDelta.index !== undefined) {
+              if (!toolCalls[toolCallDelta.index]) {
+                toolCalls[toolCallDelta.index] = {
+                  id: "",
+                  type: "function",
+                  function: { name: "", arguments: "" }
+                };
+              }
+              
+              const toolCall = toolCalls[toolCallDelta.index];
+              if (toolCallDelta.id) toolCall.id = toolCallDelta.id;
+              if (toolCallDelta.function?.name) toolCall.function.name = toolCallDelta.function.name;
+              if (toolCallDelta.function?.arguments) {
+                toolCall.function.arguments += toolCallDelta.function.arguments;
+              }
+            }
+          }
+        }
+        
+        // Handle regular content
+        const content = delta?.content || '';
         fullResponse += content;
-        yield content;
+        if (content) yield content;
       }
 
-      // Save the complete response
-      this.messages.push({ role: 'assistant', content: fullResponse });
+      // If tool calls were made, execute them
+      if (toolCalls.length > 0) {
+        this.messages.push({
+          role: 'assistant',
+          content: fullResponse || null,
+          tool_calls: toolCalls,
+        });
+
+        // Execute tools with streaming
+        for (const toolCall of toolCalls) {
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            
+            // Stream tool execution progress
+            let fullResult = '';
+            for await (const chunk of executeStreamingToolCall(toolCall.function.name, args)) {
+              yield `\n${chunk}`;
+              
+              // Capture the final result
+              if (chunk.includes(' Done: ')) {
+                const match = chunk.match(/\[.*?\] Done: (.*)$/);
+                if (match) {
+                  fullResult = match[1];
+                }
+              }
+            }
+            
+            // If we didn't capture a result, use the last chunk
+            if (!fullResult) {
+              fullResult = await executeToolCall(toolCall.function.name, args);
+            }
+            
+            this.messages.push({
+              role: 'tool',
+              content: fullResult,
+              tool_call_id: toolCall.id,
+            });
+            
+            yield '\n';
+          } catch (error) {
+            yield `\n[Error]: ${error}\n`;
+          }
+        }
+
+        // Get final response after tool execution
+        const finalStream = await this.openai.chat.completions.create({
+          model: config.openai.model,
+          messages: this.messages as any,
+          temperature: config.openai.temperature,
+          max_tokens: config.openai.maxTokens,
+          stream: true,
+        });
+
+        let finalResponse = '';
+        for await (const chunk of finalStream) {
+          const content = chunk.choices[0]?.delta?.content || '';
+          finalResponse += content;
+          yield content;
+        }
+        
+        this.messages.push({ role: 'assistant', content: finalResponse });
+      } else {
+        // No tool calls, just save the response
+        this.messages.push({ role: 'assistant', content: fullResponse });
+      }
     } catch (error) {
       console.error('Streaming Error:', error);
       yield 'Error: Failed to get streaming response';

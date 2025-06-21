@@ -26,7 +26,7 @@ export interface ToolCall {
 
 // Register all available tools
 function registerTools() {
-  // get_current_time tool
+  // get_current_time tool (streaming version)
   defaultToolManager.registerTool(
     {
       name: 'get_current_time',
@@ -44,9 +44,18 @@ function registerTools() {
         additionalProperties: false,
       },
     },
-    async (args: any) => {
+    async function* (args: any) {
+      yield '[get_current_time] Getting timezone info...';
+      
       const timezone = args.timezone || 'UTC';
+      
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       try {
+        yield '[get_current_time] Formatting date...';
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const date = new Date();
         const options: Intl.DateTimeFormatOptions = {
           timeZone: timezone,
@@ -59,14 +68,19 @@ function registerTools() {
           second: '2-digit',
           timeZoneName: 'short',
         };
-        return date.toLocaleString('en-US', options);
+        
+        const result = date.toLocaleString('en-US', options);
+        yield `[get_current_time] Done: ${result}`;
+        return result;
       } catch (error) {
-        return `Error: Invalid timezone "${timezone}"`;
+        const errorMsg = `Error: Invalid timezone "${timezone}"`;
+        yield `[get_current_time] ${errorMsg}`;
+        return errorMsg;
       }
     }
   );
 
-  // calculate tool
+  // calculate tool (streaming version)
   defaultToolManager.registerTool(
     {
       name: 'calculate',
@@ -83,19 +97,33 @@ function registerTools() {
         additionalProperties: false,
       },
     },
-    async (args: any) => {
+    async function* (args: any) {
+      yield '[calculate] Parsing expression...';
+      
+      // Simulate processing
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
       try {
         // Simple safe math evaluation
         const expression = args.expression.replace(/[^0-9+\-*/().\s]/g, '');
+        
+        yield '[calculate] Computing result...';
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const result = new Function('return ' + expression)();
-        return `${expression} = ${result}`;
+        const output = `${expression} = ${result}`;
+        
+        yield `[calculate] Done: ${output}`;
+        return output;
       } catch (error) {
-        return `Error: Invalid expression "${args.expression}"`;
+        const errorMsg = `Error: Invalid expression "${args.expression}"`;
+        yield `[calculate] ${errorMsg}`;
+        return errorMsg;
       }
     }
   );
 
-  // get_weather tool
+  // get_weather tool (streaming version)
   defaultToolManager.registerTool(
     {
       name: 'get_weather',
@@ -113,8 +141,12 @@ function registerTools() {
       },
     },
 
-    async (args: any) => {
+    async function* (args: any) {
       console.log('[TOOL DEBUG] get_weather called with args:', args);
+      yield '[get_weather] Checking location...';
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Mock weather data - expanded for more locations
       const weatherData: Record<string, any> = {
@@ -131,6 +163,9 @@ function registerTools() {
       
       const location = args.location?.toLowerCase() || 'here';
       
+      yield '[get_weather] Fetching weather data...';
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       // Check for exact match first
       let data = weatherData[location];
       
@@ -144,13 +179,20 @@ function registerTools() {
         }
       }
       
+      yield '[get_weather] Processing weather information...';
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Default response for unknown locations
+      let result: string;
       if (!data) {
         data = { temp: '19°C', condition: 'Clear', humidity: '70%' };
-        return `Weather for ${args.location}: ${data.temp}, ${data.condition}, Humidity: ${data.humidity} (simulated data)`;
+        result = `Weather for ${args.location}: ${data.temp}, ${data.condition}, Humidity: ${data.humidity} (simulated data)`;
+      } else {
+        result = `Weather in ${args.location}: ${data.temp}, ${data.condition}, Humidity: ${data.humidity}`;
       }
       
-      return `Weather in ${args.location}: ${data.temp}, ${data.condition}, Humidity: ${data.humidity}`;
+      yield `[get_weather] Done: ${result}`;
+      return result;
     }
   );
 }
@@ -168,6 +210,13 @@ export async function executeToolCall(name: string, args: any): Promise<string> 
     return result.data || '';
   } else {
     return result.error || `Unknown tool: ${name}`;
+  }
+}
+
+// Streaming tool execution wrapper
+export async function* executeStreamingToolCall(name: string, args: any): AsyncGenerator<string, void, unknown> {
+  for await (const chunk of defaultToolManager.executeStreamingTool(name, args)) {
+    yield chunk;
   }
 }
 

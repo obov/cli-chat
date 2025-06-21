@@ -40,12 +40,11 @@ program
     let modeEmoji: string;
     
     if (mode === 'agent') {
-      bot = new Agent(options.tools, options.stream);
+      // Agent mode always has tools enabled by default
+      bot = new Agent(true, options.stream);
       modeEmoji = '🤖';
       console.log(`${modeEmoji} AGENT Mode Started!`);
-      if (options.tools) {
-        console.log(`🔧 Available tools: ${bot.getAvailableTools().join(', ')}`);
-      }
+      console.log(`🔧 Available tools: ${bot.getAvailableTools().join(', ')}`);
       if (options.stream) {
         console.log('📡 Streaming mode enabled');
       }

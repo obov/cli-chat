@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { config } from "./config";
-import { availableTools, executeToolCall, Tool, ToolCall } from "./tools";
+import { availableTools, executeToolCall, executeStreamingToolCall, Tool, ToolCall } from "./tools";
 
 export interface Message {
   role: "user" | "assistant" | "system" | "tool";
@@ -204,19 +204,37 @@ export class ChatBot {
           tool_calls: toolCalls,
         });
 
-        // Execute tools
+        // Execute tools with streaming
         for (const toolCall of toolCalls) {
           try {
             const args = JSON.parse(toolCall.function.arguments);
-            const result = await executeToolCall(toolCall.function.name, args);
+            
+            // Stream tool execution progress
+            let fullResult = '';
+            for await (const chunk of executeStreamingToolCall(toolCall.function.name, args)) {
+              yield `\n${chunk}`;
+              
+              // Capture the final result (the last chunk that starts with "[toolname] Done:")
+              if (chunk.includes(' Done: ')) {
+                const match = chunk.match(/\[.*?\] Done: (.*)$/);
+                if (match) {
+                  fullResult = match[1];
+                }
+              }
+            }
+            
+            // If we didn't capture a result from "Done:" message, use the last chunk
+            if (!fullResult) {
+              fullResult = await executeToolCall(toolCall.function.name, args);
+            }
             
             this.messages.push({
               role: "tool",
-              content: result,
+              content: fullResult,
               tool_call_id: toolCall.id,
             });
             
-            yield `\n[${toolCall.function.name}]: ${result}\n`;
+            yield '\n';
           } catch (error) {
             yield `\n[Error]: ${error}\n`;
           }
