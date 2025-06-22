@@ -4,7 +4,7 @@ const API_BASE = '/api';
 const getSessionId = () => {
   let sessionId = localStorage.getItem('sessionId');
   if (!sessionId) {
-    sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     localStorage.setItem('sessionId', sessionId);
   }
   return sessionId;
@@ -48,10 +48,9 @@ export const api = {
 
   async getChatHistory() {
     const sessionId = getSessionId();
-    const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}`);
+    const res = await fetch(`${API_BASE}/chat/history?sessionId=${sessionId}`);
     if (!res.ok) {
-      // If session doesn't exist, return empty history
-      return { messages: [] };
+      return [];
     }
     return res.json();
   },

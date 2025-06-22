@@ -123,18 +123,24 @@ chatRouter.get('/history', (req, res) => {
   const sessionId = req.query.sessionId || req.sessionID;
   const session = sessionStore.getSession(sessionId as string);
   
-  if (!session) {
+  if (!session || session.messages.length === 0) {
     return res.json([]);
   }
   
   // Format for history display
+  const userMessages = session.messages.filter(m => m.role === 'user');
+  const assistantMessages = session.messages.filter(m => m.role === 'assistant');
+  
   const history = [{
     id: session.id,
     timestamp: session.lastActivity,
     messageCount: session.messages.length,
-    preview: session.messages.length > 0 
-      ? session.messages[session.messages.length - 1].content?.substring(0, 100) + '...'
-      : 'No messages'
+    userMessageCount: userMessages.length,
+    assistantMessageCount: assistantMessages.length,
+    preview: assistantMessages.length > 0 
+      ? assistantMessages[assistantMessages.length - 1].content?.substring(0, 100) + '...'
+      : 'No responses yet',
+    firstMessage: userMessages.length > 0 ? userMessages[0].content : 'No messages'
   }];
   
   res.json(history);

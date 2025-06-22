@@ -13,18 +13,6 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <ChatPage />,
-        loader: async () => {
-          try {
-            const [session, tools] = await Promise.all([
-              api.getSession(),
-              api.getTools()
-            ]);
-            return { session, tools };
-          } catch (error) {
-            console.error('Failed to load initial data:', error);
-            return { session: null, tools: [] };
-          }
-        },
       },
       {
         path: 'settings',

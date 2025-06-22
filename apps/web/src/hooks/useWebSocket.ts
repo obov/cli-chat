@@ -22,9 +22,16 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
     try {
       // Reuse existing connection if available
       if (globalWs && globalWs.readyState === WebSocket.OPEN) {
+        console.log('[useWebSocket] Reusing existing WebSocket connection');
         wsRef.current = globalWs;
         setConnectionState('connected');
-        console.log('Reusing existing WebSocket connection');
+        
+        // Important: Trigger onMessage with connection event for reused connections
+        setTimeout(() => {
+          console.log('[useWebSocket] Triggering connection event for reused WebSocket');
+          onMessage?.({ type: 'connection', reused: true });
+        }, 0);
+        
         return;
       }
       
@@ -36,16 +43,30 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
         return;
       }
       
+      // If WebSocket exists but is closed, clear it
+      if (globalWs && globalWs.readyState === WebSocket.CLOSED) {
+        globalWs = null;
+      }
+      
       setConnectionState('connecting');
       
       // Get browser timezone
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const locale = navigator.language || 'en-US';
       
-      // Add timezone and locale as query parameters
+      // Get session ID from localStorage
+      const sessionId = localStorage.getItem('sessionId') || `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      
+      // Save session ID if it's new
+      if (!localStorage.getItem('sessionId')) {
+        localStorage.setItem('sessionId', sessionId);
+      }
+      
+      // Add parameters as query strings
       const wsUrl = new URL(url);
       wsUrl.searchParams.set('tz', timezone);
       wsUrl.searchParams.set('locale', locale);
+      wsUrl.searchParams.set('sessionId', sessionId);
       
       const ws = new WebSocket(wsUrl.toString());
       globalWs = ws;
@@ -59,6 +80,8 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
         }
+        
+        // Session history is now automatically loaded by the server
       };
 
       ws.onmessage = (event) => {
@@ -100,23 +123,26 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   };
 
   const sendMessage = useCallback((type: string, data: any) => {
+    console.log('[useWebSocket] Attempting to send message:', type, data);
+    console.log('[useWebSocket] WebSocket state:', wsRef.current?.readyState, 'OPEN=', WebSocket.OPEN);
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       const message = {
         type,
         ...data,
       };
+      console.log('[useWebSocket] Sending message:', message);
       wsRef.current.send(JSON.stringify(message));
       return true;
     }
+    console.log('[useWebSocket] Cannot send - WebSocket not open');
     return false;
   }, []);
 
   const sendChatMessage = useCallback((content: string) => {
-    const sessionId = localStorage.getItem('sessionId') || `session-${Date.now()}`;
     return sendMessage('chat', {
       message: content,
-      enableTools: true,
-      sessionId,
+      enableTools: true
     });
   }, [sendMessage]);
 

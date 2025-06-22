@@ -2,16 +2,17 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import { Agent, AgentMessage } from '../agent';
 import { SessionStore } from '../sessions';
+import { ToolTracker } from '../database/tool-tracker';
 
 interface WSMessage {
-  type: 'chat' | 'clear' | 'getHistory' | 'ping' | 'pong';
+  type: 'chat' | 'clear' | 'getHistory' | 'ping' | 'pong' | 'loadSession';
   sessionId?: string;
   message?: string;
   enableTools?: boolean;
 }
 
 interface WSResponse {
-  type: 'message' | 'token' | 'tool_call' | 'tool_progress' | 'tool_result' | 'history' | 'error' | 'clear' | 'pong';
+  type: 'message' | 'token' | 'tool_call' | 'tool_progress' | 'tool_result' | 'history' | 'error' | 'clear' | 'pong' | 'connection' | 'session_loaded' | 'system_message';
   content?: string;
   sessionId?: string;
   history?: AgentMessage[];
@@ -20,6 +21,7 @@ interface WSResponse {
   result?: any;
   error?: string;
   timestamp?: string;
+  clientId?: string;
 }
 
 export class WebSocketManager {
@@ -53,26 +55,35 @@ export class WebSocketManager {
       console.log(`[WebSocket] New connection from ${remoteAddress}`);
       console.log(`[WebSocket] User-Agent: ${userAgent}`);
       
-      // Parse timezone and locale from query parameters
+      // Parse parameters from query string
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       const timezone = url.searchParams.get('tz') || 'UTC';
       const locale = url.searchParams.get('locale') || 'en-US';
-      console.log(`[WebSocket] Client timezone: ${timezone}, locale: ${locale}`);
+      const sessionId = url.searchParams.get('sessionId') || this.generateSessionId();
+      
+      console.log(`[WebSocket] Client timezone: ${timezone}, locale: ${locale}, sessionId: ${sessionId}`);
       
       // Generate client ID
       const clientId = this.generateClientId();
       this.clients.set(clientId, ws);
       
-      // Store client metadata
+      // Store client metadata and session info
       (ws as any).clientMetadata = { timezone, locale };
+      (ws as any).sessionId = sessionId;
       console.log(`[WebSocket] Client ${clientId} connected. Total clients: ${this.clients.size}`);
 
-      // Send welcome message
+      // Store client ID in WebSocket for later use
+      (ws as any).clientId = clientId;
+
+      // Send initial handshake with session info
       this.sendMessage(ws, {
-        type: 'message',
-        content: 'Connected to ChatBot WebSocket server',
+        type: 'connection',
+        clientId,
+        sessionId,
         timestamp: new Date().toISOString()
       });
+      
+      // Don't automatically load session - wait for client request
 
       // Handle messages
       ws.on('message', async (data: Buffer) => {
@@ -124,6 +135,10 @@ export class WebSocketManager {
         this.sendMessage(ws, { type: 'pong', timestamp });
         break;
       
+      case 'loadSession':
+        await this.handleLoadSession(ws, message);
+        break;
+      
       default:
         this.sendError(ws, `Unknown message type: ${message.type}`);
     }
@@ -135,7 +150,7 @@ export class WebSocketManager {
       return;
     }
 
-    const sessionId = message.sessionId || this.generateSessionId();
+    const sessionId = message.sessionId || (ws as any).sessionId || this.generateSessionId();
     const enableTools = message.enableTools !== false;
 
     try {
@@ -145,6 +160,13 @@ export class WebSocketManager {
         session = this.sessionStore.createSession(sessionId);
       }
 
+      // Add user message to session first
+      this.sessionStore.addMessage(sessionId, {
+        role: 'user',
+        content: message.message,
+        timestamp: new Date().toISOString()
+      });
+      
       // Create agent with session history
       const agent = new Agent(enableTools, true);
       if (session.messages.length > 0) {
@@ -157,12 +179,7 @@ export class WebSocketManager {
         agent.setClientMetadata(clientMetadata);
       }
 
-      // Send session ID
-      this.sendMessage(ws, {
-        type: 'message',
-        sessionId,
-        content: `Using session: ${sessionId}`
-      });
+      // Don't send "Using session" message - it clutters the chat
 
       // Stream response
       for await (const chunk of agent.getStructuredStreamingResponse(message.message)) {
@@ -176,6 +193,17 @@ export class WebSocketManager {
             break;
           
           case 'tool_call':
+            // Save tool call message to session
+            this.sessionStore.addMessage(sessionId, {
+              role: 'system',
+              content: `🔧 Calling tool: ${chunk.name}`,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Track tool call start time
+            (ws as any).toolStartTime = Date.now();
+            (ws as any).currentTool = { name: chunk.name, args: chunk.args };
+            
             this.sendMessage(ws, {
               type: 'tool_call',
               tool: chunk.name,
@@ -185,6 +213,13 @@ export class WebSocketManager {
             break;
           
           case 'tool_progress':
+            // Save tool progress message to session
+            this.sessionStore.addMessage(sessionId, {
+              role: 'system',
+              content: `⏳ ${chunk.name}: ${chunk.message}`,
+              timestamp: new Date().toISOString()
+            });
+            
             this.sendMessage(ws, {
               type: 'tool_progress',
               tool: chunk.name,
@@ -194,6 +229,28 @@ export class WebSocketManager {
             break;
           
           case 'tool_result':
+            // Save tool result message to session
+            this.sessionStore.addMessage(sessionId, {
+              role: 'system',
+              content: `✅ Tool result: ${JSON.stringify(chunk.result)}`,
+              timestamp: new Date().toISOString()
+            });
+            
+            // Track tool execution time
+            if ((ws as any).toolStartTime && (ws as any).currentTool) {
+              const executionTime = Date.now() - (ws as any).toolStartTime;
+              ToolTracker.track(
+                sessionId,
+                (ws as any).currentTool.name,
+                (ws as any).currentTool.args,
+                chunk.result,
+                executionTime
+              );
+              // Clean up
+              delete (ws as any).toolStartTime;
+              delete (ws as any).currentTool;
+            }
+            
             this.sendMessage(ws, {
               type: 'tool_result',
               tool: chunk.name,
@@ -204,9 +261,23 @@ export class WebSocketManager {
         }
       }
 
-      // Update session
-      const messages = agent.getMessages();
-      this.sessionStore.updateSession(sessionId, messages);
+      // Get final agent messages
+      const agentMessages = agent.getMessages();
+      
+      // Find and save the assistant's final response and tool messages
+      for (const msg of agentMessages) {
+        if (msg.role === 'assistant' || msg.role === 'tool') {
+          // Check if this message was already saved (by comparing content)
+          const existingSession = this.sessionStore.getSession(sessionId);
+          const alreadySaved = existingSession?.messages.some(
+            m => m.role === msg.role && m.content === msg.content && m.tool_call_id === msg.tool_call_id
+          );
+          
+          if (!alreadySaved) {
+            this.sessionStore.addMessage(sessionId, msg);
+          }
+        }
+      }
 
     } catch (error: any) {
       console.error('[WebSocket] Chat error:', error);
@@ -268,6 +339,68 @@ export class WebSocketManager {
 
   private generateSessionId(): string {
     return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private async handleLoadSession(ws: WebSocket, message: WSMessage) {
+    console.log('[WebSocket] handleLoadSession called with:', message);
+    
+    const sessionId = message.sessionId;
+    if (!sessionId) {
+      console.log('[WebSocket] No session ID provided');
+      this.sendError(ws, 'Session ID is required');
+      return;
+    }
+
+    console.log('[WebSocket] Loading session:', sessionId);
+    const session = this.sessionStore.getSession(sessionId);
+    console.log('[WebSocket] Session loaded:', session ? `${session.messages.length} messages` : 'null');
+    
+    if (session && session.messages.length > 0) {
+      console.log('[WebSocket] Sending session messages to client...');
+      // Send messages with role information for proper display
+      for (const msg of session.messages) {
+        console.log(`[WebSocket] Sending ${msg.role} message: ${msg.content?.substring(0, 50)}...`);
+        if (msg.role === 'user') {
+          // For user messages, we need the client to add them to their state
+          this.sendMessage(ws, {
+            type: 'history',
+            history: [{
+              role: 'user',
+              content: msg.content || '',
+              timestamp: msg.timestamp
+            }],
+            sessionId
+          });
+        } else if (msg.role === 'assistant') {
+          // For assistant messages, send as regular messages
+          this.sendMessage(ws, {
+            type: 'message',
+            content: msg.content || '',
+            sessionId,
+            timestamp: msg.timestamp || new Date().toISOString()
+          });
+        } else if (msg.role === 'system') {
+          // For system messages, send with role information
+          this.sendMessage(ws, {
+            type: 'system_message',
+            content: msg.content || '',
+            sessionId,
+            timestamp: msg.timestamp || new Date().toISOString()
+          });
+        }
+      }
+      console.log('[WebSocket] Finished sending all session messages');
+    } else {
+      console.log('[WebSocket] No messages to send or session is empty');
+    }
+    
+    // Send session loaded confirmation
+    console.log('[WebSocket] Sending session_loaded confirmation');
+    this.sendMessage(ws, {
+      type: 'session_loaded',
+      sessionId,
+      timestamp: new Date().toISOString()
+    });
   }
 
   // Broadcast to all connected clients
