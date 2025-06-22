@@ -19,18 +19,28 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   const connect = () => {
+    
     try {
       // Reuse existing connection if available
       if (globalWs && globalWs.readyState === WebSocket.OPEN) {
-        console.log('[useWebSocket] Reusing existing WebSocket connection');
         wsRef.current = globalWs;
         setConnectionState('connected');
         
-        // Important: Trigger onMessage with connection event for reused connections
-        setTimeout(() => {
-          console.log('[useWebSocket] Triggering connection event for reused WebSocket');
-          onMessage?.({ type: 'connection', reused: true });
-        }, 0);
+        // Re-register message handler for the reused connection
+        if (onMessage) {
+          globalWs.onmessage = (event) => {
+            try {
+              const message = JSON.parse(event.data);
+              setMessages(prev => [...prev, message]);
+              onMessage(message);
+            } catch (error) {
+              console.error('Failed to parse WebSocket message:', error);
+            }
+          };
+        }
+        
+        // Send reconnect message to server to reload session history
+        globalWs.send(JSON.stringify({ type: 'reconnect' }));
         
         return;
       }
@@ -157,19 +167,32 @@ export function useWebSocket(url: string, options: UseWebSocketOptions = {}) {
 
   useEffect(() => {
     connectionCount++;
-    console.log(`WebSocket hook mounted. Connection count: ${connectionCount}`);
     
     connect();
     
     return () => {
       connectionCount--;
-      console.log(`WebSocket hook unmounting. Connection count: ${connectionCount}`);
       
       // Don't disconnect on unmount - keep connection alive for navigation
       // Only clear the local reference
       wsRef.current = null;
     };
   }, []); // Run only once on mount
+  
+  // Update message handler when onMessage changes
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && onMessage) {
+      wsRef.current.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          setMessages(prev => [...prev, message]);
+          onMessage(message);
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+    }
+  }, [onMessage]);
 
   return {
     isConnected: connectionState === 'connected',

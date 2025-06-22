@@ -5,11 +5,10 @@ import type { ChatMessage } from '@cli-chatbot/shared';
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [needsSessionLoad, setNeedsSessionLoad] = useState(false);
+  
 
   const handleWebSocketMessage = useCallback((wsMessage: any) => {
-    console.log('[useChat] Received WebSocket message:', wsMessage.type, wsMessage);
+    
     switch (wsMessage.type) {
       case 'message':
         // Skip connection messages
@@ -17,27 +16,21 @@ export function useChat() {
             wsMessage.content?.includes('Connected to')) {
           return;
         }
-        setMessages(prev => {
-          const newMessages = [...prev, {
-            role: 'assistant',
-            content: wsMessage.content || '',
-            timestamp: wsMessage.timestamp ? new Date(wsMessage.timestamp).getTime() : Date.now(),
-          }];
-          console.log('[useChat] Added assistant message. Total messages:', newMessages.length);
-          return newMessages;
-        });
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: wsMessage.content || '',
+          timestamp: wsMessage.timestamp ? new Date(wsMessage.timestamp).getTime() : Date.now(),
+          id: wsMessage.id,
+        }]);
         break;
         
       case 'system_message':
-        setMessages(prev => {
-          const newMessages = [...prev, {
-            role: 'system',
-            content: wsMessage.content || '',
-            timestamp: wsMessage.timestamp ? new Date(wsMessage.timestamp).getTime() : Date.now(),
-          }];
-          console.log('[useChat] Added system message. Total messages:', newMessages.length);
-          return newMessages;
-        });
+        setMessages(prev => [...prev, {
+          role: 'system',
+          content: wsMessage.content || '',
+          timestamp: wsMessage.timestamp ? new Date(wsMessage.timestamp).getTime() : Date.now(),
+          id: wsMessage.id,
+        }]);
         break;
         
       case 'token':
@@ -45,7 +38,7 @@ export function useChat() {
         // Update the last message if it's from assistant
         setMessages(prev => {
           const lastMessage = prev[prev.length - 1];
-          if (lastMessage && lastMessage.role === 'assistant') {
+          if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.id) {
             return [
               ...prev.slice(0, -1),
               { ...lastMessage, content: lastMessage.content + wsMessage.content }
@@ -68,6 +61,7 @@ export function useChat() {
           role: 'system',
           content: `🔧 Calling tool: ${wsMessage.tool}`,
           timestamp: Date.now(),
+          id: wsMessage.id,
         }]);
         break;
         
@@ -76,6 +70,7 @@ export function useChat() {
           role: 'system',
           content: `⏳ ${wsMessage.tool}: ${wsMessage.content}`,
           timestamp: Date.now(),
+          id: wsMessage.id,
         }]);
         break;
 
@@ -84,6 +79,7 @@ export function useChat() {
           role: 'system',
           content: `✅ Tool result: ${JSON.stringify(wsMessage.result)}`,
           timestamp: Date.now(),
+          id: wsMessage.id,
         }]);
         break;
 
@@ -92,6 +88,7 @@ export function useChat() {
           role: 'system',
           content: `❌ Error: ${wsMessage.error}`,
           timestamp: Date.now(),
+          id: wsMessage.id,
         }]);
         break;
         
@@ -101,52 +98,36 @@ export function useChat() {
         break;
         
       case 'history':
-        // Add historical messages (usually user messages)
-        if (wsMessage.history && Array.isArray(wsMessage.history)) {
-          console.log('[useChat] Received history with', wsMessage.history.length, 'messages');
-          wsMessage.history.forEach((msg: any) => {
-            setMessages(prev => {
-              const newMessages = [...prev, {
-                role: msg.role,
-                content: msg.content || '',
-                timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now(),
-              }];
-              console.log(`[useChat] Added ${msg.role} message from history. Total messages:`, newMessages.length);
-              return newMessages;
-            });
+        // Add historical messages with IDs to prevent duplicates
+        if (wsMessage.messages && Array.isArray(wsMessage.messages)) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.filter(m => m.id).map(m => m.id));
+            const newMessages = wsMessage.messages.filter((msg: any) => 
+              !msg.id || !existingIds.has(msg.id)
+            ).map((msg: any) => ({
+              role: msg.role,
+              content: msg.content || '',
+              timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now(),
+              id: msg.id,
+            }));
+            return [...prev, ...newMessages];
           });
         }
         break;
         
-      case 'session_loaded':
-        console.log('Session loaded:', wsMessage.sessionId);
-        setSessionLoaded(true);
-        break;
-        
-      case 'connection':
-        console.log('[useChat] Received connection event, sessionLoaded:', sessionLoaded);
-        // When connection is established, request session if not loaded
-        if (!sessionLoaded) {
-          const sessionId = localStorage.getItem('sessionId');
-          console.log('[useChat] Session not loaded, sessionId:', sessionId);
-          if (sessionId) {
-            // Clear existing messages before loading
-            setMessages([]);
-            // Set flag to request session load after WebSocket is ready
-            console.log('[useChat] Setting needsSessionLoad flag');
-            setNeedsSessionLoad(true);
-          }
-        }
+      case 'clear_history':
+        // Clear all messages when server says to
+        setMessages([]);
         break;
     }
-  }, [sessionLoaded]);
+  }, []);
 
   // Use relative URL to leverage Vite proxy
   const wsUrl = window.location.protocol === 'https:' 
     ? `wss://${window.location.host}/ws`
     : `ws://${window.location.host}/ws`;
     
-  const { isConnected, connectionState, sendMessage: wsSendMessage, sendChatMessage } = useWebSocket(wsUrl, {
+  const { isConnected, connectionState, sendChatMessage } = useWebSocket(wsUrl, {
     onMessage: handleWebSocketMessage,
   });
 
@@ -169,59 +150,6 @@ export function useChat() {
     setMessages([]);
   }, []);
 
-  // Debug messages state changes
-  useEffect(() => {
-    console.log('[useChat] Messages state updated:', messages.length, 'messages');
-    if (messages.length > 0) {
-      console.log('[useChat] First message:', messages[0]);
-      console.log('[useChat] Last message:', messages[messages.length - 1]);
-    }
-  }, [messages]);
-
-  // Load session when component mounts and WebSocket is connected
-  useEffect(() => {
-    console.log('[useChat] Component mounted, isConnected:', isConnected);
-    setSessionLoaded(false);
-    setMessages([]); // Clear messages on mount to ensure fresh load
-    
-    // Request session load if WebSocket is connected
-    if (isConnected) {
-      const sessionId = localStorage.getItem('sessionId');
-      if (sessionId) {
-        console.log('[useChat] Requesting session load:', sessionId);
-        wsSendMessage('loadSession', { sessionId });
-      }
-    }
-    
-    // Clean up on unmount
-    return () => {
-      console.log('[useChat] Component unmounting');
-      setSessionLoaded(false);
-    };
-  }, []); // Run only on mount
-  
-  // Request session load when needsSessionLoad flag is set
-  useEffect(() => {
-    if (needsSessionLoad && wsSendMessage) {
-      const sessionId = localStorage.getItem('sessionId');
-      if (sessionId) {
-        console.log('[useChat] Sending deferred session load request:', sessionId);
-        wsSendMessage('loadSession', { sessionId });
-        setNeedsSessionLoad(false);
-      }
-    }
-  }, [needsSessionLoad, wsSendMessage]);
-  
-  // Also request session load when connection state changes to connected
-  useEffect(() => {
-    if (isConnected && !sessionLoaded && wsSendMessage) {
-      const sessionId = localStorage.getItem('sessionId');
-      if (sessionId) {
-        console.log('[useChat] WebSocket connected, requesting session load:', sessionId);
-        wsSendMessage('loadSession', { sessionId });
-      }
-    }
-  }, [isConnected, sessionLoaded, wsSendMessage]);
 
   return {
     messages,

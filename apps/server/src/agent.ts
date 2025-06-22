@@ -8,6 +8,7 @@ export interface AgentMessage {
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   timestamp?: string;
+  id?: string; // Our custom ID for tracking, not sent to OpenAI
 }
 
 export class Agent {
@@ -52,7 +53,7 @@ export class Agent {
       // Create chat completion with tools
       const completion = await this.openai.chat.completions.create({
         model: config.openai.model,
-        messages: this.messages as any,
+        messages: this.getOpenAIMessages() as any,
         tools: this.tools.length > 0 ? this.tools : undefined,
         temperature: config.openai.temperature,
         max_tokens: config.openai.maxTokens,
@@ -100,7 +101,7 @@ export class Agent {
         // Get final response after tool execution
         const finalCompletion = await this.openai.chat.completions.create({
           model: config.openai.model,
-          messages: this.messages as any,
+          messages: this.getOpenAIMessages() as any,
           temperature: config.openai.temperature,
           max_tokens: config.openai.maxTokens,
         });
@@ -132,7 +133,7 @@ export class Agent {
 
       const stream = await this.openai.chat.completions.create({
         model: config.openai.model,
-        messages: this.messages as any,
+        messages: this.getOpenAIMessages() as any,
         tools: this.tools.length > 0 ? this.tools : undefined,
         temperature: config.openai.temperature,
         max_tokens: config.openai.maxTokens,
@@ -227,7 +228,7 @@ export class Agent {
         // Get final response after tool execution
         const finalStream = await this.openai.chat.completions.create({
           model: config.openai.model,
-          messages: this.messages as any,
+          messages: this.getOpenAIMessages() as any,
           temperature: config.openai.temperature,
           max_tokens: config.openai.maxTokens,
           stream: true,
@@ -258,7 +259,35 @@ export class Agent {
   setConversationHistory(messages: AgentMessage[]) {
     // Keep system message and set new conversation history
     const systemMessage = this.messages.find(msg => msg.role === 'system');
-    this.messages = systemMessage ? [systemMessage, ...messages] : messages;
+    
+    // Filter out UI-only system messages and standalone tool messages
+    const validMessages = messages.filter((msg, index) => {
+      // Filter out UI-only system messages (tool tracking messages)
+      if (msg.role === 'system' && msg.content) {
+        const content = msg.content;
+        if (content.includes('🔧 Calling tool:') || 
+            content.includes('⏳') || 
+            content.includes('✅ Tool result:')) {
+          return false;
+        }
+      }
+      
+      // Filter out standalone tool messages
+      if (msg.role === 'tool') {
+        // Check if previous message has tool_calls
+        for (let i = index - 1; i >= 0; i--) {
+          const prevMsg = messages[i];
+          if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+            return true;
+          }
+        }
+        return false;
+      }
+      
+      return true;
+    });
+    
+    this.messages = systemMessage ? [systemMessage, ...validMessages] : validMessages;
   }
 
   setClientMetadata(metadata: { timezone?: string; locale?: string }) {
@@ -271,6 +300,90 @@ export class Agent {
 
   getMessages(): AgentMessage[] {
     return this.messages;
+  }
+
+  // Filter messages for OpenAI API calls
+  private getOpenAIMessages(): any[] {
+    // First pass: identify which messages to keep
+    const keepFlags = new Array(this.messages.length).fill(true);
+    
+    // Mark UI-only system messages for removal
+    this.messages.forEach((msg, index) => {
+      if (msg.role === 'system' && msg.content) {
+        const content = msg.content;
+        if (content.includes('🔧 Calling tool:') || 
+            content.includes('⏳') || 
+            content.includes('✅ Tool result:')) {
+          keepFlags[index] = false;
+        }
+      }
+    });
+    
+    // Mark orphaned tool messages for removal
+    this.messages.forEach((msg, index) => {
+      if (msg.role === 'tool') {
+        let foundToolCall = false;
+        // Look backwards for assistant message with tool_calls
+        for (let i = index - 1; i >= 0; i--) {
+          // Skip messages we're already filtering out
+          if (!keepFlags[i]) continue;
+          
+          const prevMsg = this.messages[i];
+          if (prevMsg.role === 'assistant' && prevMsg.tool_calls) {
+            foundToolCall = true;
+            break;
+          }
+        }
+        
+        if (!foundToolCall) {
+          keepFlags[index] = false;
+        }
+      }
+    });
+    
+    // Second pass: filter and clean messages
+    const filtered = this.messages.filter((_, index) => keepFlags[index]);
+    
+    // Remove our custom fields that OpenAI doesn't expect
+    const openAIMessages = filtered.map(msg => {
+      const cleanMsg: any = {
+        role: msg.role,
+        content: msg.content
+      };
+      
+      // Only include OpenAI-expected fields
+      if (msg.tool_calls) cleanMsg.tool_calls = msg.tool_calls;
+      if (msg.tool_call_id) cleanMsg.tool_call_id = msg.tool_call_id;
+      
+      // Explicitly exclude our custom fields
+      // Do not include: id, timestamp
+      
+      return cleanMsg;
+    });
+    
+    // Final validation before sending to OpenAI
+    const finalValidation: any[] = [];
+    let lastAssistantWithToolCalls: any = null;
+    
+    openAIMessages.forEach((msg, idx) => {
+      // Track assistant messages with tool_calls
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        lastAssistantWithToolCalls = msg;
+      }
+      
+      // Check tool messages
+      if (msg.role === 'tool') {
+        // Verify tool_call_id matches
+        if (!lastAssistantWithToolCalls || 
+            !lastAssistantWithToolCalls.tool_calls.some((tc: any) => tc.id === msg.tool_call_id)) {
+          return; // Skip this message
+        }
+      }
+      
+      finalValidation.push(msg);
+    });
+    
+    return finalValidation;
   }
 
   // New method for SSE/WebSocket streaming that returns structured chunks
@@ -292,7 +405,7 @@ export class Agent {
     try {
       const stream = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
-        messages: this.messages,
+        messages: this.getOpenAIMessages(),
         tools: this.enableTools ? this.tools : undefined,
         tool_choice: this.enableTools ? 'auto' : undefined,
         stream: true,
@@ -412,7 +525,7 @@ export class Agent {
         // Get the final response after tool execution
         const finalStream = await this.openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          messages: this.messages,
+          messages: this.getOpenAIMessages(),
           stream: true,
         });
 

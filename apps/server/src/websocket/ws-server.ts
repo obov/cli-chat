@@ -5,16 +5,17 @@ import { SessionStore } from '../sessions';
 import { ToolTracker } from '../database/tool-tracker';
 
 interface WSMessage {
-  type: 'chat' | 'clear' | 'getHistory' | 'ping' | 'pong' | 'loadSession';
+  type: 'chat' | 'clear' | 'getHistory' | 'ping' | 'pong' | 'reconnect';
   sessionId?: string;
   message?: string;
   enableTools?: boolean;
 }
 
 interface WSResponse {
-  type: 'message' | 'token' | 'tool_call' | 'tool_progress' | 'tool_result' | 'history' | 'error' | 'clear' | 'pong' | 'connection' | 'session_loaded' | 'system_message';
+  type: 'message' | 'token' | 'tool_call' | 'tool_progress' | 'tool_result' | 'history' | 'error' | 'clear' | 'pong' | 'connection' | 'system_message' | 'clear_history';
   content?: string;
   sessionId?: string;
+  messages?: any[];
   history?: AgentMessage[];
   tool?: string;
   args?: any;
@@ -22,6 +23,7 @@ interface WSResponse {
   error?: string;
   timestamp?: string;
   clientId?: string;
+  id?: string;
 }
 
 export class WebSocketManager {
@@ -83,7 +85,8 @@ export class WebSocketManager {
         timestamp: new Date().toISOString()
       });
       
-      // Don't automatically load session - wait for client request
+      // Automatically load session history
+      this.loadSessionHistory(ws, sessionId);
 
       // Handle messages
       ws.on('message', async (data: Buffer) => {
@@ -135,8 +138,12 @@ export class WebSocketManager {
         this.sendMessage(ws, { type: 'pong', timestamp });
         break;
       
-      case 'loadSession':
-        await this.handleLoadSession(ws, message);
+      case 'reconnect':
+        // Handle reconnection - reload session history
+        const reconnectSessionId = (ws as any).sessionId;
+        if (reconnectSessionId) {
+          this.loadSessionHistory(ws, reconnectSessionId);
+        }
         break;
       
       default:
@@ -193,11 +200,13 @@ export class WebSocketManager {
             break;
           
           case 'tool_call':
-            // Save tool call message to session
+            // Save tool call message to session with ID
+            const toolCallId = `tool-call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             this.sessionStore.addMessage(sessionId, {
               role: 'system',
               content: `🔧 Calling tool: ${chunk.name}`,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              id: toolCallId
             });
             
             // Track tool call start time
@@ -208,32 +217,38 @@ export class WebSocketManager {
               type: 'tool_call',
               tool: chunk.name,
               args: chunk.args,
-              sessionId
+              sessionId,
+              id: toolCallId
             });
             break;
           
           case 'tool_progress':
-            // Save tool progress message to session
+            // Save tool progress message to session with ID
+            const toolProgressId = `tool-prog-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             this.sessionStore.addMessage(sessionId, {
               role: 'system',
               content: `⏳ ${chunk.name}: ${chunk.message}`,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              id: toolProgressId
             });
             
             this.sendMessage(ws, {
               type: 'tool_progress',
               tool: chunk.name,
               content: chunk.message,
-              sessionId
+              sessionId,
+              id: toolProgressId
             });
             break;
           
           case 'tool_result':
-            // Save tool result message to session
+            // Save tool result message to session with ID
+            const toolResultId = `tool-res-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             this.sessionStore.addMessage(sessionId, {
               role: 'system',
               content: `✅ Tool result: ${JSON.stringify(chunk.result)}`,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              id: toolResultId
             });
             
             // Track tool execution time
@@ -255,7 +270,8 @@ export class WebSocketManager {
               type: 'tool_result',
               tool: chunk.name,
               result: chunk.result,
-              sessionId
+              sessionId,
+              id: toolResultId
             });
             break;
         }
@@ -341,66 +357,25 @@ export class WebSocketManager {
     return `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private async handleLoadSession(ws: WebSocket, message: WSMessage) {
-    console.log('[WebSocket] handleLoadSession called with:', message);
-    
-    const sessionId = message.sessionId;
-    if (!sessionId) {
-      console.log('[WebSocket] No session ID provided');
-      this.sendError(ws, 'Session ID is required');
-      return;
-    }
-
-    console.log('[WebSocket] Loading session:', sessionId);
+  private loadSessionHistory(ws: WebSocket, sessionId: string) {
     const session = this.sessionStore.getSession(sessionId);
-    console.log('[WebSocket] Session loaded:', session ? `${session.messages.length} messages` : 'null');
     
     if (session && session.messages.length > 0) {
-      console.log('[WebSocket] Sending session messages to client...');
-      // Send messages with role information for proper display
-      for (const msg of session.messages) {
-        console.log(`[WebSocket] Sending ${msg.role} message: ${msg.content?.substring(0, 50)}...`);
-        if (msg.role === 'user') {
-          // For user messages, we need the client to add them to their state
-          this.sendMessage(ws, {
-            type: 'history',
-            history: [{
-              role: 'user',
-              content: msg.content || '',
-              timestamp: msg.timestamp
-            }],
-            sessionId
-          });
-        } else if (msg.role === 'assistant') {
-          // For assistant messages, send as regular messages
-          this.sendMessage(ws, {
-            type: 'message',
-            content: msg.content || '',
-            sessionId,
-            timestamp: msg.timestamp || new Date().toISOString()
-          });
-        } else if (msg.role === 'system') {
-          // For system messages, send with role information
-          this.sendMessage(ws, {
-            type: 'system_message',
-            content: msg.content || '',
-            sessionId,
-            timestamp: msg.timestamp || new Date().toISOString()
-          });
-        }
-      }
-      console.log('[WebSocket] Finished sending all session messages');
+      
+      // Send all messages in a single history event with unique IDs
+      const messagesWithIds = session.messages.map((msg, index) => ({
+        ...msg,
+        id: `${sessionId}-${index}-${Date.now()}`
+      }));
+      
+      this.sendMessage(ws, {
+        type: 'history',
+        messages: messagesWithIds,
+        sessionId,
+        timestamp: new Date().toISOString()
+      });
     } else {
-      console.log('[WebSocket] No messages to send or session is empty');
     }
-    
-    // Send session loaded confirmation
-    console.log('[WebSocket] Sending session_loaded confirmation');
-    this.sendMessage(ws, {
-      type: 'session_loaded',
-      sessionId,
-      timestamp: new Date().toISOString()
-    });
   }
 
   // Broadcast to all connected clients
